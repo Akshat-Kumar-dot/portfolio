@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Akshat Kumar — Software and AI, made by hand</title>
+<meta name="description" content="Akshat Kumar — selected software and AI work.">
+<meta name="theme-color" content="#f3ede2">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "d3-force": "https://cdn.jsdelivr.net/npm/d3-force@3/+esm"
+} }
+</script>
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+
+<div class="grain" id="grain" aria-hidden="true"></div>
+
+<div class="track" id="track">
+  <main class="stage" id="stage">
+    <canvas id="scene" aria-label="A pair of hands opening to reveal a globe of project cards"></canvas>
+
+    <header class="top">
+      <a class="brand" href="#" id="brand"><span class="dot"></span><span id="brandName"></span></a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#work" id="navWork">Work</a><a href="#about">About</a><a href="#contact">Contact</a>
+      </nav>
+      <div class="status" id="status"><i></i><span id="availability"></span><span class="tz"><span id="tzLabel"></span> <b id="clock"></b></span></div>
+    </header>
+
+    <!-- the landing: the name, a line, and beside it the notes every project grew out of -->
+    <section class="hero" id="hero">
+      <h1 id="headline"></h1>
+      <p class="tagline" id="tagline"></p>
+      <p class="hero-meta" id="heroMeta"></p>
+    </section>
+
+    <div class="notes" id="notes" role="img" aria-label="A graph of notes, in the style of Obsidian's graph view">
+      <canvas id="graph"></canvas>
+    </div>
+
+    <div class="hint" id="hint">Scroll<i></i></div>
+    <div class="guide" id="guide" aria-live="polite"></div>
+
+    <section class="readout away" id="readout">
+      <div class="ro-idx" id="roIdx"></div>
+      <h2 class="ro-title" id="roTitle"></h2>
+      <p class="ro-meta" id="roMeta"></p>
+    </section>
+
+    <nav class="sr-only" aria-label="Projects"><ul id="links"></ul></nav>
+  </main>
+</div>
+
+<section class="section" id="about">
+  <div class="sec-label">(01) About</div>
+  <p class="sec-lead" id="aboutText"></p>
+</section>
+
+<section class="section" id="contact">
+  <div class="sec-label">(02) Contact</div>
+  <div class="contact-body">
+    <p class="sec-kicker">Have something in mind?</p>
+    <a class="mail" id="mail" href="#"></a>
+    <ul class="socials" id="socials"></ul>
+  </div>
+  <footer class="foot"><span id="footName"></span><span id="footYear"></span></footer>
+</section>
+
+<div class="pill" id="pill" aria-hidden="true">Open ↗</div>
+
+</body>
+</html>

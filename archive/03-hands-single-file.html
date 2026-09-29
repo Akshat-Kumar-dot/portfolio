@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Akshat Kumar — Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Registered so hover lift can be transitioned. */
+  @property --lift { syntax:'<length>'; inherits:false; initial-value:0px; }
+  @property --s    { syntax:'<number>'; inherits:false; initial-value:1; }
+
+  :root {
+    --bg:#f3ede2; --bg-hi:#fbf8f1; --bg-lo:#e2d8c5;
+    --ink:#1d1b17; --muted:#8b8375; --accent:#c65a3a;
+    --serif:"Instrument Serif","Iowan Old Style",Georgia,serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%) fixed var(--bg);
+         color:var(--ink); font-family:var(--mono); overflow-x:hidden; -webkit-font-smoothing:antialiased; }
+
+  .grain { position:fixed; inset:0; z-index:0; pointer-events:none; mix-blend-mode:multiply; opacity:.55; }
+
+  /* The scroll track: the stage sticks while you scroll through it. */
+  .track { position:relative; z-index:1; height:280vh; }
+  .stage { position:sticky; top:0; height:100vh; height:100svh; overflow:hidden; overflow:clip; }
+
+  /* ===================== GLOBE ===================== */
+  .lift { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; z-index:1; }
+  .globe { position:relative; width:min(62vmin,620px); aspect-ratio:1; isolation:isolate;
+           cursor:grab; touch-action:pan-y; user-select:none; -webkit-user-select:none; pointer-events:none; }
+  .globe.live { pointer-events:auto; }
+  .globe.drag { cursor:grabbing; }
+  .globe::before { content:''; position:absolute; inset:-18%; z-index:-3; border-radius:50%; opacity:var(--b,1);
+                   background:radial-gradient(closest-side, rgba(255,253,248,.95), rgba(255,253,248,.5) 55%, rgba(255,253,248,0)); }
+
+  .dial { position:absolute; left:-12%; top:-12%; width:124%; height:124%; z-index:-2;
+          pointer-events:none; overflow:visible; opacity:0; }
+  .dial * { vector-effect:non-scaling-stroke; }
+  .dial .ring { fill:none; stroke:var(--ink); stroke-opacity:.16; }
+  .dial line { stroke:var(--ink); stroke-opacity:.2; }
+  .dial line.maj { stroke-opacity:.45; }
+  .dial text { font:500 2.9px var(--mono); letter-spacing:.3px; fill:var(--muted); }
+  #needle path { fill:var(--accent); }
+
+  .float { position:absolute; inset:0; perspective:1500px;
+           animation:bob 7s ease-in-out infinite alternate; }
+  @keyframes bob { from { transform:translateY(-8px) } to { transform:translateY(4px) } }
+
+  #wire { position:absolute; left:-10%; top:-10%; width:120%; height:120%; pointer-events:none; }
+  .sphere { position:absolute; inset:0; transform-style:preserve-3d; will-change:transform; }
+
+  /* Each card bursts out on its own schedule: --b is the globe's progress
+     (set from scroll), --d0 is this card's delay. */
+  .tile { --lift:0px; --s:1;
+          --k:clamp(0, (var(--b, 1) - var(--d0, 0)) * 2.2, 1);
+          position:absolute; left:50%; top:50%; display:block; overflow:hidden;
+          border-radius:6px; background:#e7dfd1; text-decoration:none; outline:none;
+          backface-visibility:hidden; -webkit-backface-visibility:hidden;
+          transform:rotateY(var(--lon)) rotateX(var(--lat))
+                    translateZ(calc(var(--R) * var(--k) + var(--lift))) rotateZ(var(--tz))
+                    scale(calc(var(--s) * var(--k)));
+          box-shadow:0 0 0 1px rgba(29,27,23,.10), 0 8px 18px -8px rgba(60,40,20,.35);
+          transition:--lift .5s cubic-bezier(.2,.9,.3,1), --s .5s cubic-bezier(.2,.9,.3,1),
+                     box-shadow .3s ease, filter .4s ease; }
+  .tile img { width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
+  .tile::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+                 background:linear-gradient(145deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%,
+                                            rgba(0,0,0,0) 70%, rgba(0,0,0,.10) 100%);
+                 box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+  .tile.on, .tile:focus-visible { --lift:28px; --s:1.14;
+      box-shadow:0 0 0 2px var(--accent), 0 18px 30px -10px rgba(60,40,20,.45); }
+  .globe.hovering .tile:not(.on) { filter:grayscale(.85) contrast(.9) brightness(1.03); }
+
+  /* ===================== HANDS ===================== */
+  #hands { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none;
+           -webkit-mask-image:linear-gradient(to top, transparent 0%, rgba(0,0,0,.6) 12%, #000 32%);
+                   mask-image:linear-gradient(to top, transparent 0%, rgba(0,0,0,.6) 12%, #000 32%); }
+
+  /* ===================== FRAME ===================== */
+  .corner { position:absolute; z-index:3; display:flex; align-items:center; gap:10px;
+            font:500 11px/1 var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  .corner.tl { top:28px; left:32px; color:var(--ink); }
+  .corner.tr { top:28px; right:32px; }
+  .corner.br { bottom:32px; right:32px; white-space:pre; font-variant-numeric:tabular-nums; transition:opacity .6s; }
+  .corner .dot { width:7px; height:7px; border-radius:50%; background:var(--accent);
+                 animation:pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.35 } }
+
+  .readout { position:absolute; z-index:3; left:32px; bottom:28px; max-width:min(520px,38vw); pointer-events:none; }
+  .ro-idx { display:flex; gap:8px; font:500 11px/1 var(--mono); letter-spacing:.18em;
+            color:var(--muted); font-variant-numeric:tabular-nums; }
+  .ro-idx b { font-weight:500; color:var(--accent); }
+  .ro-title { font:400 clamp(34px,4.2vw,60px)/1 var(--serif); letter-spacing:-.01em; margin-top:12px; }
+  .ro-title em { font-style:italic; color:var(--accent); }
+  .ro-meta { font:500 11px/1.4 var(--mono); letter-spacing:.18em; text-transform:uppercase;
+             color:var(--muted); margin-top:14px; }
+  .readout.swap .ro-title, .readout.swap .ro-meta { animation:swap .45s cubic-bezier(.2,.9,.3,1) backwards; }
+  .readout.swap .ro-meta { animation-delay:.05s; }
+  @keyframes swap { from { opacity:0; transform:translateY(8px) } }
+
+  .hint { position:absolute; z-index:3; left:50%; top:30%; transform:translateX(-50%); text-align:center;
+          font:500 10.5px/1 var(--mono); letter-spacing:.28em; text-transform:uppercase; color:var(--muted);
+          pointer-events:none; }
+  .hint i { display:block; width:1px; height:44px; margin:14px auto 0; overflow:hidden; background:rgba(29,27,23,.12); position:relative; }
+  .hint i::after { content:''; position:absolute; left:0; top:-40%; width:1px; height:40%; background:var(--ink);
+                   animation:drip 1.8s cubic-bezier(.6,0,.3,1) infinite; }
+  @keyframes drip { to { top:100% } }
+
+  .pill { position:fixed; left:0; top:0; z-index:10; pointer-events:none;
+          font:600 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
+          color:var(--bg-hi); background:var(--ink); padding:7px 10px 7px 11px; border-radius:999px;
+          opacity:0; scale:.6; transition:opacity .2s ease, scale .25s cubic-bezier(.2,.9,.3,1); }
+  .pill.on { opacity:1; scale:1; }
+
+  @media (max-width:700px) {
+    .globe { width:80vw; }
+    .corner.tl, .corner.tr { top:20px; }
+    .corner.tl { left:16px; } .corner.tr { right:16px; }
+    .corner.br { display:none; }
+    .readout { left:16px; right:16px; bottom:22px; max-width:none; }
+    .dial text { display:none; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .float, .corner .dot, .hint i::after { animation:none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+
+<div class="grain" id="grain" aria-hidden="true"></div>
+
+<div class="track" id="track">
+  <main class="stage" id="stage">
+    <div class="corner tl"><span class="dot"></span>Akshat Kumar</div>
+    <div class="corner tr">Work Index · <span id="count">12</span></div>
+
+    <div class="lift" id="lift">
+      <div class="globe" id="globe">
+        <svg class="dial" id="dial" viewBox="-112 -112 224 224" aria-hidden="true">
+          <circle class="ring" r="96"/>
+          <g id="ticks"></g>
+          <g id="needle"><path d="M0 -96.5 L-2.4 -101.5 L2.4 -101.5Z"/></g>
+        </svg>
+        <div class="float">
+          <canvas id="wire" aria-hidden="true"></canvas>
+          <div class="sphere" id="sphere"></div>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="hands" aria-hidden="true"></canvas>
+
+    <div class="hint" id="hint">Scroll to open<i></i></div>
+
+    <section class="readout" id="readout">
+      <div class="ro-idx" id="roIdx"></div>
+      <h1 class="ro-title" id="roTitle"></h1>
+      <p class="ro-meta" id="roMeta"></p>
+    </section>
+
+    <div class="corner br" id="coords"></div>
+  </main>
+</div>
+
+<div class="pill" id="pill" aria-hidden="true">Open ↗</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* Each entry is one project. The globe repeats the list to fill every
+   card, so each project shows up several times around the sphere.
+   Add `img:'path/to/shot.jpg'` to replace the generated poster.       */
+const WORK = [
+  { title:'Project 01', tag:'Web App',     year:'2026', url:'#' },
+  { title:'Project 02', tag:'Branding',    year:'2026', url:'#' },
+  { title:'Project 03', tag:'AI Tool',     year:'2025', url:'#' },
+  { title:'Project 04', tag:'Mobile',      year:'2025', url:'#' },
+  { title:'Project 05', tag:'Data Viz',    year:'2025', url:'#' },
+  { title:'Project 06', tag:'Open Source', year:'2025', url:'#' },
+  { title:'Project 07', tag:'Web App',     year:'2024', url:'#' },
+  { title:'Project 08', tag:'Motion',      year:'2024', url:'#' },
+  { title:'Project 09', tag:'Backend',     year:'2024', url:'#' },
+  { title:'Project 10', tag:'Game',        year:'2024', url:'#' },
+  { title:'Project 11', tag:'UI Kit',      year:'2023', url:'#' },
+  { title:'Project 12', tag:'Research',    year:'2023', url:'#' }
+];
+
+const GLOBE = {
+  count:   68,     // cards on the sphere
+  size:    0.118,  // card width as a fraction of globe width
+  jitter:  0.34,   // how much card sizes vary
+  tiltMax: 11,     // per-card rotation, degrees
+  minFade: 0.08,   // opacity of cards at the very back
+  speed:   0.06,   // idle drift, degrees per frame
+  wire:    true    // faint latitude/longitude lines inside the globe
+};
+
+/* Scroll choreography, as fractions of the scroll track (0 → 1). */
+const SCROLL = {
+  open:  [0.02, 0.45],   // hands go from pressed together to cupped
+  burst: [0.15, 0.80],   // globe rises out of the palms and its cards fly out
+  sink:  [0.40, 1.00]    // hands drop low and fade into the page
+};
+
+const $ = id => document.getElementById(id);
+const params  = new URLSearchParams(location.search);
+const FORCE_P = parseFloat(params.get('p'));          // ?p=0.3 pins the scroll progress (for tuning)
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fine    = matchMedia('(hover: hover) and (pointer: fine)').matches;
+const TAU = Math.PI * 2, DEG = 180 / Math.PI, PERSP = 1500;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const sm = (r, t) => { const x = clamp((t - r[0]) / (r[1] - r[0]), 0, 1); return x * x * (3 - 2 * x); };
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const pad = v => String(v).padStart(2, '0');
+
+function rng(seed) {
+  let a = 2166136261;
+  for (let i = 0; i < seed.length; i++) { a ^= seed.charCodeAt(i); a = Math.imul(a, 16777619); }
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+/* ============================================================
+   GLOBE
+   ============================================================ */
+const globe = $('globe'), sphere = $('sphere'), wire = $('wire'), needle = $('needle'), dial = $('dial'),
+      lift = $('lift'), readout = $('readout'), roIdx = $('roIdx'), roTitle = $('roTitle'), roMeta = $('roMeta'),
+      coords = $('coords'), pill = $('pill'), hint = $('hint'), stage = $('stage'), track = $('track');
+const n = WORK.length;
+$('count').textContent = pad(n);
+
+/* paper grain: one 160px noise tile */
+(function () {
+  const S = 160, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d'), d = g.createImageData(S, S);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const v = 90 + Math.random() * 120 | 0;
+    d.data[i] = v; d.data[i+1] = v * .94 | 0; d.data[i+2] = v * .86 | 0;
+    d.data[i+3] = Math.random() * 38 | 0;
+  }
+  g.putImageData(d, 0, 0);
+  $('grain').style.backgroundImage = 'url(' + c.toDataURL() + ')';
+})();
+
+/* compass dial */
+(function () {
+  let s = '';
+  for (let d = 0; d < 360; d += 5) {
+    const a = d / DEG, maj = d % 30 === 0, r1 = maj ? 103 : 99.5;
+    const sx = Math.sin(a), cy = -Math.cos(a);
+    s += '<line' + (maj ? ' class="maj"' : '') +
+         ' x1="' + (sx * 96).toFixed(2) + '" y1="' + (cy * 96).toFixed(2) +
+         '" x2="' + (sx * r1).toFixed(2) + '" y2="' + (cy * r1).toFixed(2) + '"/>';
+  }
+  for (const d of [0, 90, 180, 270]) {
+    const a = d / DEG;
+    s += '<text x="' + (Math.sin(a) * 108).toFixed(2) + '" y="' + (-Math.cos(a) * 108).toFixed(2) +
+         '" text-anchor="middle" dominant-baseline="central">' + String(d).padStart(3, '0') + '</text>';
+  }
+  $('ticks').innerHTML = s;
+})();
+
+/* placeholder posters, one design per project */
+const COL = { ink:'#1f1d1a', clay:'#c65a3a', gold:'#e2a93b', sage:'#9aa57f', sea:'#3f5f7f',
+              blush:'#eab9a3', paper:'#f4ecdd', moss:'#2f4a3a' };
+const DARK = { ink:1, clay:1, sea:1, moss:1 };
+const COMBOS = [
+  ['paper','clay','ink'], ['ink','gold','paper'], ['sea','blush','paper'], ['clay','paper','ink'],
+  ['sage','paper','moss'], ['gold','ink','clay'], ['moss','gold','paper'], ['blush','sea','ink'],
+  ['paper','sea','gold'], ['ink','clay','blush'], ['paper','moss','clay'], ['sea','gold','paper']
+];
+const MONO = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
+
+function poster(item, num) {
+  const rr = rng(item.title);
+  const [bgK, aK, bK] = COMBOS[(num - 1) % COMBOS.length];
+  const A = COL[aK], B = COL[bK], text = DARK[bgK] ? COL.paper : COL.ink;
+  const W = 240, H = 312, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = COL[bgK]; x.fillRect(0, 0, W, H);
+  const circle = (cx, cy, r) => { x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill(); };
+
+  switch ((num - 1) % 7) {
+    case 0:
+      x.fillStyle = A; x.beginPath(); x.moveTo(56, 252); x.lineTo(56, 150);
+      x.arc(120, 150, 64, Math.PI, 0); x.lineTo(184, 252); x.closePath(); x.fill();
+      x.fillStyle = B; circle(120, 150, 24);
+      break;
+    case 1:
+      x.fillStyle = A; circle(120, 142, 62);
+      x.fillStyle = B; for (let y = 160; y <= 244; y += 14) x.fillRect(40, y, 160, 6);
+      break;
+    case 2:
+      for (let m = 0; m < 4; m++) for (let k = 0; k < 4; k++) {
+        const u = rr(), cx = 54 + k * 44, cy = 86 + m * 44;
+        if (u < .5) { x.fillStyle = u < .25 ? A : B; circle(cx, cy, 14); }
+        else { x.strokeStyle = A; x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, 13, 0, TAU); x.stroke(); }
+      }
+      break;
+    case 3:
+      x.fillStyle = A; x.beginPath(); x.moveTo(20, 252); x.lineTo(220, 252); x.lineTo(220, 64);
+      x.closePath(); x.fill();
+      x.fillStyle = B; circle(78, 112, 30);
+      break;
+    case 4:
+      for (let m = 0; m < 6; m++) { x.fillStyle = m % 2 ? B : A; x.fillRect(20, 72 + m * 30, 50 + rr() * 150, 18); }
+      break;
+    case 5: {
+      const S = 90;
+      for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) {
+        const x0 = 30 + q * S, y0 = 72 + r * S, o = rr() * 4 | 0;
+        const cx = x0 + (o === 1 || o === 2 ? S : 0), cy = y0 + (o >= 2 ? S : 0);
+        const st = [0, .5, 1, 1.5][o] * Math.PI;
+        x.fillStyle = rr() < .5 ? A : B;
+        x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, S, st, st + Math.PI / 2); x.closePath(); x.fill();
+      }
+      break;
+    }
+    default:
+      x.strokeStyle = A; x.lineWidth = 8;
+      for (const r of [84, 64, 44, 24]) { x.beginPath(); x.arc(120, 160, r, 0, TAU); x.stroke(); }
+      x.fillStyle = B; circle(120, 160, 10);
+  }
+
+  x.fillStyle = text;
+  if ('letterSpacing' in x) x.letterSpacing = '1px';
+  x.font = '600 18px ' + MONO; x.fillText(pad(num), 20, 36);
+  x.font = '500 11px ' + MONO; x.textAlign = 'right'; x.fillText(item.year || '', W - 20, 34);
+  x.fillText('↗', W - 20, H - 22);
+  x.textAlign = 'left'; x.font = '500 12px ' + MONO;
+  x.fillText(item.title.toUpperCase(), 20, H - 22);
+  x.globalAlpha = .3; x.fillRect(20, 50, W - 40, 1); x.globalAlpha = 1;
+  return c.toDataURL('image/jpeg', 0.86);
+}
+
+/* lay the cards out on a Fibonacci sphere */
+const N = Math.max(n, GLOBE.count);
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const tiles = [];
+function vary(i, salt) {
+  let a = 2166136261;
+  const k = 't' + i + salt;
+  for (let q = 0; q < k.length; q++) { a ^= k.charCodeAt(q); a = Math.imul(a, 16777619); }
+  return (a >>> 0) / 4294967296;
+}
+for (let i = 0; i < N; i++) {
+  const k = i % n, item = WORK[k];
+  const lat = Math.asin(1 - (i + 0.5) / N * 2), lon = GOLDEN * i;
+  const a = document.createElement('a');
+  a.className = 'tile';
+  a.href = item.url || '#';
+  a.draggable = false;
+  a.dataset.k = k;
+  a.setAttribute('aria-label', item.title + (item.tag ? ' — ' + item.tag : ''));
+  if (i >= n) { a.tabIndex = -1; a.setAttribute('aria-hidden', 'true'); }
+  if (/^https?:/.test(item.url || '')) { a.target = '_blank'; a.rel = 'noopener'; }
+  const img = document.createElement('img');
+  img.alt = ''; img.decoding = 'async'; img.draggable = false;
+  a.appendChild(img);
+  a.style.setProperty('--lon', (lon * DEG).toFixed(3) + 'deg');
+  a.style.setProperty('--lat', (-lat * DEG).toFixed(3) + 'deg');
+  a.style.setProperty('--tz', ((vary(i, 'r') * 2 - 1) * GLOBE.tiltMax).toFixed(2) + 'deg');
+  // bottom cards leave first, so the globe unfurls upward out of the palms
+  a.style.setProperty('--d0', ((1 - i / N) * 0.55).toFixed(3));
+  sphere.appendChild(a);
+  tiles.push({ el: a, img, k, lat, lon,
+               sinLat: Math.sin(lat), cosLat: Math.cos(lat),
+               sinLon: Math.sin(lon), cosLon: Math.cos(lon), op: -1,
+               scale: 1 - GLOBE.jitter / 2 + vary(i, 's') * GLOBE.jitter });
+}
+
+let gw = 0, wsize = 0, wdpr = 1, lastS = NaN, lastT = NaN, lastB = NaN;
+const wx = GLOBE.wire && wire ? wire.getContext('2d') : null;
+if (!wx && wire) wire.remove();
+
+function placeGlobe() {
+  gw = globe.clientWidth;
+  sphere.style.setProperty('--R', (gw * 0.42).toFixed(1) + 'px');
+  for (const t of tiles) {
+    const w = Math.round(gw * GLOBE.size * t.scale), h = Math.round(w * 1.3);
+    t.el.style.width = w + 'px'; t.el.style.height = h + 'px';
+    t.el.style.marginLeft = (-w / 2) + 'px'; t.el.style.marginTop = (-h / 2) + 'px';
+  }
+  if (wx) {
+    wdpr = Math.min(window.devicePixelRatio || 1, 2);
+    wsize = gw * 1.2;
+    wire.width = wire.height = Math.round(wsize * wdpr);
+  }
+  lastS = NaN;
+}
+
+/* wireframe: same rotation + perspective as the CSS */
+function drawWire(k) {
+  const c = wsize / 2, R = gw * 0.42 * 0.965 * k;
+  const s = spin / DEG, t = tilt / DEG;
+  const cs = Math.cos(s), ss = Math.sin(s), ct = Math.cos(t), st = Math.sin(t);
+  const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  let px = 0, py = 0, pz = 0;
+  function to(x0, y0, z0, first) {
+    const x1 = x0 * cs + z0 * ss, z1 = -x0 * ss + z0 * cs;
+    const y2 = y0 * ct - z1 * st, z2 = y0 * st + z1 * ct;
+    const f = PERSP / (PERSP - z2 * R);
+    const X = c + x1 * R * f, Y = c + y2 * R * f;
+    if (!first) { const b = Math.min(3, (pz + z2 + 2) | 0); paths[b].moveTo(px, py); paths[b].lineTo(X, Y); }
+    px = X; py = Y; pz = z2;
+  }
+  for (let m = 0; m < 12; m++) {
+    const lo = m * Math.PI / 6, sl = Math.sin(lo), cl = Math.cos(lo);
+    for (let q = 0; q <= 36; q++) {
+      const la = -Math.PI / 2 + q * Math.PI / 36, cla = Math.cos(la);
+      to(cla * sl, Math.sin(la), cla * cl, q === 0);
+    }
+  }
+  for (let p = -2; p <= 2; p++) {
+    const la = p * Math.PI / 6, y = Math.sin(la), r = Math.cos(la);
+    for (let q = 0; q <= 60; q++) { const lo = q * TAU / 60; to(r * Math.sin(lo), y, r * Math.cos(lo), q === 0); }
+  }
+  wx.setTransform(wdpr, 0, 0, wdpr, 0, 0);
+  wx.clearRect(0, 0, wsize, wsize);
+  wx.lineWidth = 1;
+  const alpha = [.045, .07, .11, .16];
+  for (let b = 0; b < 4; b++) { wx.strokeStyle = 'rgba(29,27,23,' + (alpha[b] * k) + ')'; wx.stroke(paths[b]); }
+}
+
+/* depth shading */
+function shade() {
+  const s = spin / DEG, t = tilt / DEG;
+  const cs = Math.cos(s), ss = Math.sin(s), ct = Math.cos(t), st = Math.sin(t);
+  for (const p of tiles) {
+    const x0 = p.cosLat * p.sinLon, y0 = p.sinLat, z0 = p.cosLat * p.cosLon;
+    const z1 = -x0 * ss + z0 * cs, z2 = y0 * st + z1 * ct;
+    let o = GLOBE.minFade + (1 - GLOBE.minFade) * Math.pow((z2 + 1) / 2, 1.7);
+    o = Math.round(o * 20) / 20;
+    if (o !== p.op) { p.el.style.opacity = o; p.op = o; }
+  }
+}
+
+/* readout */
+let formed = false;
+const HINT = fine ? 'Drag to rotate · Hover to preview' : 'Drag to rotate · Tap to open';
+const YEARS = (ys => Math.min(...ys) + ' — ' + Math.max(...ys))(WORK.map(w => +w.year).filter(Boolean));
+function swap() { readout.classList.remove('swap'); void readout.offsetWidth; readout.classList.add('swap'); }
+const idx = v => '<b>' + v + '</b><span>/</span><span>' + pad(n) + '</span>';
+function showDefault() {
+  roIdx.innerHTML = idx('—');
+  roTitle.innerHTML = 'Selected <em>Work</em>';
+  roMeta.textContent = formed ? HINT : n + ' projects · ' + YEARS;
+  swap();
+}
+function show(k) {
+  const w = WORK[k];
+  roIdx.innerHTML = idx(pad(k + 1));
+  roTitle.textContent = w.title;
+  roMeta.textContent = [w.tag, w.year].filter(Boolean).join('  ·  ') || ' ';
+  swap();
+}
+
+/* hover / focus */
+let hot = null, hotTimer = 0, aimAt = null;
+function setHot(el, byPointer) {
+  clearTimeout(hotTimer);
+  if (el === hot) return;
+  if (hot) hot.classList.remove('on');
+  hot = el;
+  globe.classList.toggle('hovering', !!el);
+  pill.classList.toggle('on', !!el && !!byPointer);
+  if (el) { el.classList.add('on'); show(+el.dataset.k); } else showDefault();
+}
+sphere.addEventListener('pointerover', e => {
+  if (e.pointerType === 'touch' || globe.classList.contains('drag') || !formed) return;
+  const t = e.target.closest('.tile');
+  if (t) setHot(t, true);
+});
+sphere.addEventListener('pointerout', e => {
+  if (e.pointerType === 'touch') return;
+  const to = e.relatedTarget instanceof Element ? e.relatedTarget.closest('.tile') : null;
+  if (!to) { clearTimeout(hotTimer); hotTimer = setTimeout(() => setHot(null), 90); }
+});
+addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') pill.style.translate = (e.clientX + 18) + 'px ' + (e.clientY + 18) + 'px';
+}, { passive: true });
+sphere.addEventListener('focusin', e => {
+  const t = e.target.closest('.tile');
+  if (!t || !t.matches(':focus-visible')) return;
+  const p = tiles.find(q => q.el === t);
+  aimAt = { spin: -p.lon * DEG, tilt: Math.max(-72, Math.min(72, p.lat * DEG)) };
+  setHot(t, false);
+});
+sphere.addEventListener('focusout', () => { aimAt = null; setHot(null); });
+
+/* spin, drag, inertia */
+let spin = 0, tilt = -14, vSpin = 0, vTilt = 0;
+let dragging = false, moved = 0, lastX = 0, lastY = 0;
+const clampTilt = v => Math.max(-72, Math.min(72, v));
+globe.addEventListener('dragstart', e => e.preventDefault());
+globe.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  dragging = true; moved = 0; aimAt = null;
+  lastX = e.clientX; lastY = e.clientY;
+});
+globe.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (moved <= 6) return;
+  if (!globe.hasPointerCapture(e.pointerId)) {      // capture only once it's really a drag, so a click still reaches the link
+    globe.setPointerCapture(e.pointerId);
+    globe.classList.add('drag');
+    setHot(null);
+  }
+  vSpin = dx * 0.28; vTilt = -dy * 0.18;
+  spin += vSpin; tilt = clampTilt(tilt + vTilt);
+});
+function endDrag() { if (!dragging) return; dragging = false; globe.classList.remove('drag'); }
+addEventListener('pointerup', endDrag);
+addEventListener('pointercancel', endDrag);
+globe.addEventListener('click', e => {
+  if (moved > 6) { e.preventDefault(); e.stopPropagation(); moved = 0; }
+}, true);
+
+/* ============================================================
+   HANDS — two copies of one rigged hand, the second mirrored.
+   Pressed palm-to-palm at the top of the page, they hinge open
+   along the little-finger edges into a cupped offering.
+   ============================================================ */
+const HAND_URL = 'https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/generic-hand/right.glb';
+const hcv = $('hands');
+const renderer = new THREE.WebGLRenderer({ canvas: hcv, antialias: true, alpha: true, powerPreference: 'high-performance' });
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.5;
+const camera = new THREE.PerspectiveCamera(26, 1, 0.01, 10);
+const CAM_POS = new THREE.Vector3(0, 0.44, 0.52), CAM_AT = new THREE.Vector3(0, 0.17, -0.12);
+
+scene.add(new THREE.HemisphereLight(0xfff5e8, 0xcdb99a, 1.25));
+const key = new THREE.DirectionalLight(0xfff0e0, 2.1);
+key.position.set(-0.35, 0.85, 0.35); key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+Object.assign(key.shadow.camera, { left: -0.3, right: 0.3, top: 0.3, bottom: -0.3, near: 0.1, far: 2.5 });
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.002;
+const rim = new THREE.DirectionalLight(0xffe4cc, 0.9); rim.position.set(0.45, 0.35, -0.6);
+const glow = new THREE.PointLight(0xfff3e4, 0, 0.5, 2);     // light spilling from the globe into the palms
+scene.add(key, key.target, rim, glow);
+
+const pair = new THREE.Group(); scene.add(pair);
+const TILT = 0.28, GAP = 0.004, OPEN_ANGLE = 1.36;
+const skin = new THREE.MeshPhysicalMaterial({ color: 0xa9765a, roughness: 0.58, metalness: 0,
+  sheen: 0.8, sheenRoughness: 0.5, sheenColor: 0xffb48e, clearcoat: 0.06, clearcoatRoughness: 0.6 });
+
+/* joints are siblings in this rig, so each finger is posed by walking
+   its chain: every joint rotates everything after it */
+const HAND_X = new THREE.Vector3(1, 0, 0), HAND_Y = new THREE.Vector3(0, 1, 0);
+const FLEX = -1, SPREAD = 1;
+const _C = new THREE.Quaternion(), _r = new THREE.Quaternion(), _t = new THREE.Quaternion(),
+      _P = new THREE.Vector3(), _d = new THREE.Vector3();
+function restOf(b) {
+  return { b, p: b.position.clone(), q: b.quaternion.clone(),
+           ax: new THREE.Vector3(1, 0, 0).applyQuaternion(b.quaternion),
+           ay: new THREE.Vector3(0, 1, 0).applyQuaternion(b.quaternion),
+           az: new THREE.Vector3(0, 0, 1).applyQuaternion(b.quaternion) };
+}
+function poseChain(ch, rots) {        // rots[k] = [flex, spread, twist, swingY, swingX]
+  _C.identity(); _P.copy(ch[0].p);
+  for (let k = 0; k < ch.length; k++) {
+    const j = ch[k];
+    if (k) _P.add(_d.subVectors(j.p, ch[k - 1].p).applyQuaternion(_C));
+    const a = rots[k];
+    if (a) {
+      _r.setFromAxisAngle(j.ay, a[1] * SPREAD);
+      _r.multiply(_t.setFromAxisAngle(j.ax, a[0] * FLEX));
+      if (a[2]) _r.multiply(_t.setFromAxisAngle(j.az, a[2]));
+      if (a[3]) _r.premultiply(_t.setFromAxisAngle(HAND_Y, a[3]));
+      if (a[4]) _r.premultiply(_t.setFromAxisAngle(HAND_X, a[4]));
+      _C.multiply(_r);
+    }
+    j.b.position.copy(_P);
+    j.b.quaternion.copy(_C).multiply(j.q);
+  }
+}
+const POSE = {
+  closed: {                                                   // fingers lean in to meet the other hand's
+    index:  [[0, 0, 0], [0.2, -0.07, 0], [0.06, 0, 0], [0.03, 0, 0]],
+    middle: [[0, 0, 0], [0.21, -0.01, 0], [0.06, 0, 0], [0.03, 0, 0]],
+    ring:   [[0, 0, 0], [0.2, 0.04, 0], [0.06, 0, 0], [0.03, 0, 0]],
+    pinky:  [[0, 0, 0], [0.18, 0.09, 0], [0.06, 0, 0], [0.03, 0, 0]],
+    thumb:  [[0, 0, 0, -0.3, 0], [0.05, 0, 0], [0.08, 0, 0]]
+  },
+  open: {                                                     // relaxed cup
+    index:  [[0, 0, 0], [0.3, 0.02, 0], [0.34, 0, 0], [0.18, 0, 0]],
+    middle: [[0, 0, 0], [0.32, 0, 0], [0.36, 0, 0], [0.18, 0, 0]],
+    ring:   [[0.03, 0, 0], [0.34, -0.02, 0], [0.36, 0, 0], [0.18, 0, 0]],
+    pinky:  [[0.06, 0, 0], [0.38, -0.05, 0], [0.36, 0, 0], [0.18, 0, 0]],
+    thumb:  [[0, 0, 0, -0.45, 0], [0.12, 0, 0], [0.2, 0, 0]]
+  }
+};
+const DELAY = { thumb: 0, index: 0.04, middle: 0.08, ring: 0.12, pinky: 0.16 };
+const _blend = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+function poseHand(h, open, time) {
+  for (const f in h.chains) {
+    const o = eio(clamp((open - DELAY[f]) / 0.84, 0, 1));
+    const A = POSE.closed[f], B = POSE.open[f];
+    const breathe = Math.sin(time * 0.9 + DELAY[f] * 9) * 0.02 * o;
+    for (let k = 0; k < A.length; k++)
+      for (let c = 0; c < 5; c++) _blend[k][c] = lerp(A[k][c] || 0, B[k][c] || 0, o) + (c === 0 && k ? breathe : 0);
+    poseChain(h.chains[f], _blend.slice(0, A.length));
+  }
+}
+
+const hands = [];
+const loader = new GLTFLoader();
+async function loadHand(mirror) {
+  const gltf = await loader.loadAsync(HAND_URL);
+  const model = gltf.scene, bones = {};
+  let mesh = null;
+  model.traverse(o => {
+    if (o.isSkinnedMesh) { mesh = o; o.material = skin; o.castShadow = o.receiveShadow = true; o.frustumCulled = false; }
+    if (o.isBone) bones[o.name] = o;
+  });
+  const chains = {};
+  for (const f of ['index', 'middle', 'ring', 'pinky'])
+    chains[f] = ['metacarpal', 'phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'].map(j => restOf(bones[f + '-finger-' + j]));
+  chains.thumb = ['metacarpal', 'phalanx-proximal', 'phalanx-distal', 'tip'].map(j => restOf(bones['thumb-' + j]));
+
+  // measure the palm plane, the little-finger edge and the wrist opening (model space, rest pose)
+  const pos = mesh.geometry.attributes.position;
+  let palmX = 1, pinkyZ = -1, maxY = -1;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (y > -0.03 && y < 0.035 && z > -0.012 && z < 0.03) palmX = Math.min(palmX, x);
+    if (y > -0.03 && y < 0.03) pinkyZ = Math.max(pinkyZ, z);
+    maxY = Math.max(maxY, y);
+  }
+  let cx = 0, cz = 0, cnt = 0, x0 = 1, x1 = -1, z0 = 1, z1 = -1;
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getY(i) < maxY - 0.012) continue;
+    const x = pos.getX(i), z = pos.getZ(i);
+    cx += x; cz += z; cnt++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  if (cnt) {
+    const len = 0.3, g = new THREE.CylinderGeometry(1.25, 0.98, len, 40, 6, true);
+    g.translate(0, len / 2, 0);
+    const arm = new THREE.Mesh(g, skin);
+    arm.scale.set((x1 - x0) / 2, 1, (z1 - z0) / 2);
+    arm.position.set(cx / cnt, maxY - 0.02, cz / cnt);
+    arm.castShadow = arm.receiveShadow = true;
+    model.add(arm);
+  }
+
+  // model axes: fingers −Y, palm −X, thumb −Z  →  fingers −z, palm faces the other hand (−x), thumb up (+y)
+  const holder = new THREE.Group(); holder.add(model);
+  holder.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, -1, 0)));
+  holder.position.set(GAP - palmX, pinkyZ, -0.01);           // palm on the centre plane, little-finger edge on the hinge
+  const pivot = new THREE.Group(); pivot.add(holder);          // the hinge: rotates about z
+  const side = new THREE.Group(); side.add(pivot);
+  if (mirror) side.scale.x = -1;                               // the left hand is the right one, mirrored
+  pair.add(side);
+  const h = { chains, mesh, pivot };
+  hands.push(h);
+  return h;
+}
+const handsReady = Promise.all([loadHand(false), loadHand(true)]).catch(err => {
+  console.warn('Hand model failed to load — the globe works without it.', err);
+});
+
+/* ============================================================
+   LAYOUT + LOOP
+   ============================================================ */
+let W = innerWidth, H = innerHeight;
+function fit() {
+  W = innerWidth; H = innerHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  // keep the hands a similar on-screen size on narrow screens
+  const back = Math.max(1, 1.1 / camera.aspect);
+  camera.position.copy(CAM_POS).sub(CAM_AT).multiplyScalar(back).add(CAM_AT);
+  camera.lookAt(CAM_AT);
+  camera.updateProjectionMatrix();
+  placeGlobe();
+}
+addEventListener('resize', fit);
+
+let p = 0, pPrev = 0, tick = 0;
+const clock = new THREE.Clock();
+const _cup = new THREE.Vector3();
+
+function scrollTarget() {
+  if (Number.isFinite(FORCE_P)) return clamp(FORCE_P, 0, 1);
+  const max = track.offsetHeight - innerHeight;
+  return max > 0 ? clamp(scrollY / max, 0, 1) : 1;
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.1), time = clock.elapsedTime;
+
+  p += (scrollTarget() - p) * (1 - Math.exp(-dt * (reduced ? 30 : 7)));
+  const dp = p - pPrev; pPrev = p;
+  const open = sm(SCROLL.open, p), b = sm(SCROLL.burst, p), sink = sm(SCROLL.sink, p);
+
+  /* hands */
+  pair.rotation.x = TILT - sink * 0.05;
+  pair.position.set(0, -sink * 0.03 + Math.sin(time * 0.7) * 0.002, sink * 0.015);
+  for (const h of hands) { h.pivot.rotation.z = -OPEN_ANGLE * eio(open); poseHand(h, open, time); }
+  _cup.set(0, lerp(0.035, 0.055, open), -0.03);
+  glow.position.copy(_cup); glow.intensity = 0.25 * b;
+  pair.updateMatrixWorld();
+  pair.localToWorld(_cup).project(camera);
+  const cupX = (_cup.x * .5 + .5) * W, cupY = (-_cup.y * .5 + .5) * H;
+  renderer.render(scene, camera);
+
+  /* globe rises out of the palms */
+  const e = eio(b);
+  const gx = lerp(cupX, W * 0.5, e), gy = lerp(cupY, H * 0.43, e), gs = lerp(0.22, 1, e);
+  lift.style.transform = `translate(${gx.toFixed(1)}px, ${gy.toFixed(1)}px) scale(${gs.toFixed(4)}) translate(-50%, -50%)`;
+  if (b !== lastB) { sphere.style.setProperty('--b', b.toFixed(4)); globe.style.setProperty('--b', b.toFixed(3)); }
+  dial.style.opacity = sm([0.75, 1], b);
+  hint.style.opacity = 1 - sm([0, 0.08], p);
+  coords.style.opacity = sm([0.6, 1], b);
+
+  const nowFormed = b > 0.97;
+  if (nowFormed !== formed) {
+    formed = nowFormed;
+    globe.classList.toggle('live', formed);
+    if (!formed) setHot(null);
+    if (!hot) showDefault();
+  }
+
+  /* spin: idle drift, plus scrolling turns the globe */
+  if (aimAt && !dragging) {
+    const ds = ((aimAt.spin - spin) % 360 + 540) % 360 - 180;
+    spin += ds * 0.1; tilt += (aimAt.tilt - tilt) * 0.1; vSpin = vTilt = 0;
+  } else if (!dragging) {
+    const idle = hot || reduced ? 0 : GLOBE.speed;
+    vSpin += (idle - vSpin) * (hot ? 0.14 : 0.03);
+    if (!idle && Math.abs(vSpin) < 1e-4) vSpin = 0;
+    vTilt *= 0.92;
+    if (Math.abs(vTilt) < 1e-4) vTilt = 0;
+    spin += vSpin + dp * 300;
+    tilt = clampTilt(tilt + vTilt);
+  }
+
+  if (spin !== lastS || tilt !== lastT || b !== lastB) {
+    lastS = spin; lastT = tilt; lastB = b;
+    sphere.style.transform = 'rotateX(' + tilt.toFixed(3) + 'deg) rotateY(' + spin.toFixed(3) + 'deg)';
+    needle.setAttribute('transform', 'rotate(' + (spin % 360).toFixed(2) + ')');
+    if (wx) drawWire(b);
+    if ((tick++ & 1) === 0) shade();
+    const lon = ((-spin % 360) + 360) % 360;
+    const txt = 'LON ' + lon.toFixed(1).padStart(5, '0') + '°  ·  LAT ' +
+                (tilt < 0 ? '−' : '+') + Math.abs(tilt).toFixed(1).padStart(4, '0') + '°';
+    if (coords.textContent !== txt) coords.textContent = txt;
+  }
+}
+
+/* ============================================================
+   BOOT — posters wait briefly for the mono font
+   ============================================================ */
+fit();
+showDefault();
+shade();
+const fontsReady = document.fonts && document.fonts.load
+  ? Promise.race([
+      Promise.all([document.fonts.load('600 18px "JetBrains Mono"'),
+                   document.fonts.load('500 12px "JetBrains Mono"')]).catch(() => {}),
+      new Promise(r => setTimeout(r, 1500))])
+  : Promise.resolve();
+fontsReady.then(() => {
+  const cache = [];
+  for (const t of tiles) {
+    const item = WORK[t.k];
+    t.img.src = item.img || cache[t.k] || (cache[t.k] = poster(item, t.k + 1));
+  }
+});
+frame();
+
+window.__dbg = { POSE, hands, camera, pair, CAM_POS, CAM_AT, fit, poseHand };
+</script>
+</body>
+</html>

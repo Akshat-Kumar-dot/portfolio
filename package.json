@@ -1,0 +1,11 @@
+{
+  "name": "portfolio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Akshat Kumar — portfolio. Hands open on scroll to reveal a globe of project cards.",
+  "type": "module",
+  "scripts": {
+    "dev": "python dev-server.py 5500",
+    "serve": "npx --yes serve -l 5500 ."
+  }
+}

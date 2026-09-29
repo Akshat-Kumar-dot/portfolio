@@ -1,0 +1,210 @@
+/* ============================================================
+   GLOBE — project cards wrapped around a sphere, in the same 3D
+   scene as the hands, so it can sit in them, cast shadows on them
+   and be hidden by the fingers.
+
+   Built on a unit sphere; main.js places, scales and aims `group`.
+   Two ways to move it:
+     free   — idle drift, drag with inertia
+     focus  — zoomed in: one card faces you; drag / step to a
+              neighbour and it snaps into place
+   ============================================================ */
+import * as THREE from 'three';
+import { WORK, GLOBE } from './config.js';
+import { drawCover, COVER_W, COVER_H } from './covers.js';
+
+const PAPER = new THREE.Color('#e9e2d6');         // the back of each card
+const TAU = Math.PI * 2;
+const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+function wrap(g) {
+  // project a flat shape onto the unit sphere around (0,0,1); keeps its
+  // proportions wherever the card is placed, poles included
+  const pos = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.set(pos.getX(i), pos.getY(i), 1).normalize();
+    pos.setXYZ(i, v.x, v.y, v.z - 1);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function capTexture() {
+  // the medallion at each pole
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.fillStyle = '#efe9de'; x.beginPath(); x.arc(S / 2, S / 2, S / 2 - 2, 0, TAU); x.fill();
+  x.strokeStyle = 'rgba(29,27,23,.35)'; x.lineWidth = 3; x.beginPath(); x.arc(S / 2, S / 2, S / 2 - 18, 0, TAU); x.stroke();
+  x.fillStyle = '#1d1b17'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `400 104px "Instrument Serif", Georgia, serif`; x.fillText('AK', S / 2, S / 2 + 6);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+function cardMaterial(map) {
+  const m = new THREE.MeshStandardMaterial({
+    map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.2,
+    roughness: 0.85, metalness: 0, envMapIntensity: 0.35, side: THREE.DoubleSide,   // printed card, not glossy
+    alphaTest: 0.5, alphaToCoverage: true
+  });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uPaper = { value: PAPER };
+    sh.fragmentShader = 'uniform vec3 uPaper;\n' + sh.fragmentShader
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb = uPaper;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (!gl_FrontFacing) totalEmissiveRadiance *= 0.0;');
+  };
+  m.customProgramCacheKey = () => 'card-v1';
+  return m;
+}
+
+export function createGlobe(renderer) {
+  const group = new THREE.Group();
+  const spinner = new THREE.Group();
+  group.add(spinner);
+
+  const CW = GLOBE.cardWidth, CH = CW * (COVER_H / COVER_W);
+  const geo = wrap(new THREE.PlaneGeometry(CW, CH, 14, 10));
+  const aniso = renderer.capabilities.getMaxAnisotropy();
+
+  const textures = WORK.map((item, i) => {
+    const t = new THREE.CanvasTexture(drawCover(item, i, WORK.length, () => { t.needsUpdate = true; }));
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = aniso;
+    return t;
+  });
+
+  /* even rows of latitude, each holding as many cards as fit, and a
+     round medallion capping each pole                                */
+  const cards = [], rows = [];
+  const step = CH + GLOBE.gapY;
+  let slot = 0;
+  for (let r = 0; r < GLOBE.rows; r++) {
+    const lat = (r - (GLOBE.rows - 1) / 2) * step;
+    const n = Math.floor(TAU * Math.cos(Math.abs(lat) + CH / 2) / (CW + GLOBE.gapX));
+    const row = { lat, n, cards: [] };
+    for (let j = 0; j < n; j++) {
+      const lon = (j + (r % 2) * 0.5) / n * TAU;
+      const k = (slot * 5 + 3) % WORK.length;                  // neighbours are never the same project
+      const mesh = new THREE.Mesh(geo, cardMaterial(textures[k]));
+      mesh.castShadow = true;
+      mesh.quaternion.setFromEuler(new THREE.Euler(-lat, lon, 0, 'YXZ'));
+      const dir = new THREE.Vector3(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
+      mesh.position.copy(dir);
+      const card = { mesh, mat: mesh.material, k, dir, lat, lon, row: r, col: j, hover: 0 };
+      mesh.userData.card = card;
+      spinner.add(mesh); cards.push(card); row.cards.push(card);
+      slot++;
+    }
+    rows.push(row);
+  }
+  const capAngle = Math.PI / 2 - (Math.abs(rows[0].lat) + CH / 2) - 0.03;
+  const capGeo = wrap(new THREE.CircleGeometry(Math.tan(capAngle), 48));
+  const capMat = cardMaterial(capTexture());
+  for (const s of [1, -1]) {
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.quaternion.setFromEuler(new THREE.Euler(-s * Math.PI / 2, 0, 0, 'YXZ'));
+    cap.position.set(0, s, 0);
+    cap.castShadow = true;
+    spinner.add(cap);
+  }
+  const meshes = cards.map(c => c.mesh);
+
+  /* ---------- rotation ---------- */
+  // spinner.rotation = (tilt, spin): a card at (lat, lon) faces the viewer when tilt = lat, spin = −lon
+  let spin = 0.4, tilt = 0.12, vSpin = 0, vTilt = 0;
+  let focus = null, spinT = 0, tiltT = 0;
+
+  function aimAt(card) {
+    focus = card;
+    tiltT = card.lat;
+    spinT = spin + wrapAngle(-card.lon - spin);
+  }
+  function nearestTo(t, s) {
+    let row = rows[0];
+    for (const r of rows) if (Math.abs(r.lat - t) < Math.abs(row.lat - t)) row = r;
+    let best = row.cards[0];
+    for (const c of row.cards) if (Math.abs(wrapAngle(-c.lon - s)) < Math.abs(wrapAngle(-best.lon - s))) best = c;
+    return best;
+  }
+
+  /* focus mode on/off: on, the card nearest the front swings round to face you */
+  function setFocus(on) {
+    if (on && !focus) aimAt(nearestTo(tilt, spin));
+    if (!on && focus) { focus = null; vSpin = vTilt = 0; }
+  }
+  /* move the focus: dx = ±1 column (right/left), dy = ±1 row (up/down) */
+  function stepFocus(dx, dy) {
+    if (!focus) return;
+    if (dx) {
+      const row = rows[focus.row];
+      aimAt(row.cards[(focus.col + dx + row.n) % row.n]);
+    } else if (dy) {
+      const r = rows[focus.row + dy];
+      if (!r) return;
+      let best = r.cards[0];
+      for (const c of r.cards) if (Math.abs(wrapAngle(c.lon - focus.lon)) < Math.abs(wrapAngle(best.lon - focus.lon))) best = c;
+      aimAt(best);
+    }
+  }
+  function focusCard(card) { if (focus && card) aimAt(card); }
+
+  /* drag: in free mode the globe spins; in focus mode it follows the finger, then snaps */
+  let dragX = 0, dragY = 0;
+  function drag(dx, dy) {
+    const k = focus ? 0.0032 : 0.006;
+    vSpin = dx * k; vTilt = dy * k * (focus ? 1 : 0.66);
+    spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -0.6, focus ? 1.3 : 0.6);
+    dragX += dx; dragY += dy;
+  }
+  function release() {
+    const dx = dragX, dy = dragY;
+    dragX = dragY = 0;
+    if (!focus) return;
+    const next = nearestTo(tilt, spin);                        // wherever the drag left it
+    vSpin = vTilt = 0;
+    if (next !== focus) return aimAt(next);
+    // a flick too short to reach the next card still moves exactly one
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return stepFocus(dx < 0 ? 1 : -1, 0);
+    if (Math.abs(dy) > 40) return stepFocus(0, dy > 0 ? 1 : -1);
+    aimAt(focus);
+  }
+
+  const _n = new THREE.Vector3(), _q = new THREE.Quaternion();
+  function pick(ray) {
+    const hits = ray.intersectObjects(meshes, false);
+    for (const h of hits) {
+      const c = h.object.userData.card;
+      _n.copy(c.dir).applyQuaternion(spinner.getWorldQuaternion(_q));
+      if (_n.dot(ray.ray.direction) < -0.1) return c;       // only cards that face the viewer
+    }
+    return null;
+  }
+
+  /* s = { scrollSpin, hovered, dragging, idle, peek: {x, y} } */
+  function update(dt, s) {
+    if (focus) {
+      if (!s.dragging) {
+        const k = 1 - Math.pow(0.0006, dt);                  // settle onto the focused card
+        spin += (spinT - spin) * k; tilt += (tiltT - tilt) * k;
+      }
+    } else if (!s.dragging) {
+      vSpin *= Math.pow(0.04, dt); vTilt *= Math.pow(0.02, dt);
+      spin += (s.hovered ? 0.02 : GLOBE.spin * s.idle) * dt + vSpin + s.scrollSpin;
+      tilt = THREE.MathUtils.clamp(tilt + vTilt, -0.6, 0.6);
+      tilt += (0.12 - tilt) * (1 - Math.pow(0.3, dt));      // drift back to a slight forward lean
+    }
+    // in focus mode the cursor tilts the globe a little, to peek at the neighbours
+    const px = focus && !s.dragging ? -s.peek.x * 0.07 : 0, py = focus && !s.dragging ? s.peek.y * 0.05 : 0;
+    spinner.rotation.set(tilt + py, spin + px, 0, 'XYZ');
+
+    for (const c of cards) {
+      const target = c === s.hovered && !focus ? 1 : 0;
+      c.hover += (target - c.hover) * (1 - Math.pow(0.0008, dt));
+      c.mesh.position.copy(c.dir).multiplyScalar(1 + c.hover * 0.07);
+      c.mesh.scale.setScalar(1 + c.hover * 0.12);
+      c.mat.emissiveIntensity = 0.2 + c.hover * 0.22;
+    }
+  }
+
+  return { group, cards, update, pick, drag, release, setFocus, stepFocus, focusCard,
+           get focus() { return focus; } };
+}
