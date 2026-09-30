@@ -353,14 +353,15 @@ function paced(q, step, dt) {
   return step;
 }
 
-/* ---------- keeping it smooth on any device ----------
+/* ---------- keeping it smooth on a phone ----------
+   (Phones only — PERF.adapt. A computer always draws at full quality.)
    Every second, the average frame time. Slower than about 42 frames a second and the 3D is
    drawn at fewer pixels (a step at a time, down to half); back at a steady 60 for a few
    seconds and it steps back up — but not again to a level that proved too slow straight after
    stepping up to it, so it settles instead of see-sawing. */
 const gov = { t: 0, n: 0, calm: 0, ceil: 1, raised: -1e9, from: performance.now() + 2500 };   // not while it's still starting up
 function govern(dt, now) {
-  if (dt > 0.25 || now < gov.from) return;                   // a hiccup (a tab switch, a load), not the pace
+  if (!PERF.adapt || dt > 0.25 || now < gov.from) return;                   // a hiccup (a tab switch, a load), not the pace
   gov.t += dt; gov.n++;
   if (gov.t < 1) return;
   const ms = gov.t / gov.n * 1000, q = stage.quality;

@@ -186,7 +186,7 @@ The top of the page is just the section links, centred (your name is already big
 
 Everywhere, work nobody would see is skipped: on the landing page no 3D is drawn at all (the hands are still out of sight below), the hands aren't drawn or shadowed once you're inside the globe, and the record player only animates while it's turning. The page's paper background is a layer of its own, so phones don't repaint it while scrolling.
 
-On top of that, `govern()` in `js/main.js` watches the frame rate: below about 42 frames a second the 3D is drawn at fewer pixels, a step at a time (down to half), and it steps back up once the device keeps a steady 60 again.
+On phones, `govern()` in `js/main.js` also watches the frame rate: below about 42 frames a second the 3D is drawn at fewer pixels, a step at a time (down to half), and it steps back up once the phone keeps a steady 60 again. A computer always draws at full quality — its frame rate can be capped for reasons that have nothing to do with its power (Chrome's Energy Saver holds pages to 30 fps on battery), so that's no reason to draw fewer pixels.
 
 Add `?tier=low` (or `phone`, `full`) to the address to try a tier on your computer; the numbers for each are the `PERF` table in `js/device.js`.
 
