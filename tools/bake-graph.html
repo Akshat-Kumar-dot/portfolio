@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!-- Settles the notes graph once, ahead of time, so visitors' browsers don't have to.
+     After making a new assets/graph.json (make-graph.mjs or export-graph.mjs), open this
+     page through the local server (http://localhost:5500/tools/bake-graph.html), then save
+     the file it gives you over assets/graph.json. Without this step the site still works:
+     the notes settle as the page loads instead, which takes a moment (longer on a phone). -->
+<html lang="en">
+<meta charset="utf-8">
+<title>Bake the notes graph</title>
+<script type="importmap">
+{ "imports": { "d3-force": "https://cdn.jsdelivr.net/npm/d3-force@3/+esm" } }
+</script>
+<body style="font:15px/1.5 system-ui, sans-serif; padding:48px; max-width:640px">
+<h1 style="font-size:20px">Bake the notes graph</h1>
+<p id="out">Settling the notes…</p>
+<script type="module">
+import { seat, settle } from '../js/graph.js';
+
+const out = document.getElementById('out');
+const data = await fetch('../assets/graph.json', { cache: 'no-store' }).then(r => r.json());
+const nodes = data.nodes.map(d => ({ type: d.t, g: d.g ?? -1, deg: 0 }));  // no `p`: start fresh
+for (const [a, b] of data.links) { nodes[a].deg++; nodes[b].deg++; }
+nodes.forEach(seat);
+const sim = settle(nodes, data.links.map(([a, b]) => ({ source: a, target: b })));
+let ticks = 0;
+while (sim.alpha() > sim.alphaMin()) { sim.tick(); ticks++; }
+
+data.nodes.forEach((d, i) => { d.p = [Math.round(nodes[i].x * 10) / 10, Math.round(nodes[i].y * 10) / 10]; });
+const link = document.createElement('a');
+link.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+link.download = 'graph.json';
+link.textContent = 'Download graph.json';
+out.replaceChildren(`Settled ${nodes.length} notes in ${ticks} steps. `, link, ' — and save it over assets/graph.json.');
+</script>
+</body>
+</html>

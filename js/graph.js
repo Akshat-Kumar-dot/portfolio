@@ -11,15 +11,62 @@
    scroll-wheel only zooms once they've clicked the graph (a small
    label by the cursor says so); pinch and ctrl+scroll always work.
 
+   It stays alive once settled: the notes float a little, each cluster
+   swaying together, and now and then a signal runs along a link and
+   the note it reaches glows. Only while it's on screen, and not at all
+   for visitors who ask for reduced motion.
+
    createGraph({ frame, canvas, pill, dot }) → { setFold(t) }
      setFold: 0 = the graph, 1 = every note gathered into one dot
    ============================================================ */
 import { forceSimulation, forceLink, forceManyBody, forceX, forceY, forceCollide } from 'd3-force';
+import { PERF } from './device.js';
+import { rng } from './utils.js';
 
-const INK = '29,27,23', ACCENT = '#c65a3a';
+const INK = '29,27,23';                                     // one colour: the graph is ink on paper
 const LABEL = '500 11px "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const inOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+/* phones get a thinner graph (PERF.notes): every busy note stays, with an even share of the
+   rest — the same clusters and the same loose cloud round the edge, just fewer notes */
+function thin(data, most) {
+  if (data.nodes.length <= most) return data;
+  const deg = data.nodes.map(() => 0);
+  for (const [a, b] of data.links) { deg[a]++; deg[b]++; }
+  const hubs = deg.filter(d => d >= 8).length, r = rng('thin');
+  const share = Math.max(0, (most - hubs) / (data.nodes.length - hubs));
+  const keep = deg.map(d => d >= 8 || r() < share);
+  const at = [], nodes = [];                                   // at[old index] → new index
+  data.nodes.forEach((n, i) => { if (keep[i]) { at[i] = nodes.length; nodes.push(n); } });
+  return { nodes, links: data.links.filter(([a, b]) => keep[a] && keep[b]).map(([a, b]) => [at[a], at[b]]) };
+}
+
+/* how big a note is, how hard it's pulled in, and — unless the file says where it settled —
+   where it starts: near its topic's spot, so the layout settles quickly */
+export function seat(n) {
+  if (!n.p) {
+    const a = n.g >= 0 && n.g < 7 ? n.g / 6 * Math.PI * 2 : Math.random() * Math.PI * 2;
+    const r = n.deg === 0 ? 120 + Math.sqrt(Math.random()) * 300 : n.g >= 0 && n.g < 7 ? 150 : 60 + Math.random() * 200;
+    n.x = Math.cos(a) * r + (Math.random() - 0.5) * 60;
+    n.y = Math.sin(a) * r + (Math.random() - 0.5) * 60;
+  } else { n.x = n.p[0]; n.y = n.p[1]; }
+  n.r = n.type === 'file' ? 1.7 : 2.2 + Math.min(7, Math.sqrt(n.deg) * 1.05);
+  n.pull = n.deg === 0 ? 0.03 + Math.random() * 0.06 : 0.05;  // uneven pull: unlinked notes fill the edge unevenly, as in Obsidian
+}
+
+/* the forces the notes settle under (stopped: tick it, or restart it) — tools/bake-graph.html
+   uses the same ones to settle the graph once, ahead of time, and save where each note ends up */
+export function settle(nodes, links) {
+  return forceSimulation(nodes)
+    .force('link', forceLink(links).distance(l => (l.source.deg > 10 || l.target.deg > 10) ? 28 : 18).strength(0.6))
+    .force('charge', forceManyBody().strength(-24).distanceMax(260).theta(0.9))
+    .force('x', forceX(0).strength(d => d.pull))
+    .force('y', forceY(0).strength(d => d.pull))
+    .force('collide', forceCollide(d => d.r + 2.4).iterations(1))
+    .alphaDecay(0.018)
+    .stop();
+}
 
 export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/graph.json') {
   const ctx = canvas.getContext('2d');
@@ -34,7 +81,7 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     const cx = (W / 2 - view.x) / view.k, cy = (H / 2 - view.y) / view.k;   // keep the same point centred
-    W = w; H = h; dpr = Math.min(devicePixelRatio || 1, 2);
+    W = w; H = h; dpr = Math.min(devicePixelRatio || 1, PERF.canvasDpr);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     if (nodes.length) { view.x = W / 2 - cx * view.k; view.y = H / 2 - cy * view.k; if (!touched) fit(); }
     dirty = true;
@@ -55,38 +102,71 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
   }
 
   /* ---------- data + simulation ---------- */
-  fetch(url).then(r => r.json()).then(data => {
-    nodes = data.nodes.map((d, i) => ({ i, name: d.n, type: d.t, g: d.g ?? -1, deg: 0 }));
+  fetch(url).then(r => r.json()).then(all => {
+    const data = thin(all, PERF.notes);
+    nodes = data.nodes.map((d, i) => ({ i, name: d.n, type: d.t, g: d.g ?? -1, deg: 0, p: d.p }));
     links = data.links.map(([a, b]) => ({ source: a, target: b }));
     adj = nodes.map(() => new Set());
     for (const l of data.links) { nodes[l[0]].deg++; nodes[l[1]].deg++; adj[l[0]].add(l[1]); adj[l[1]].add(l[0]); }
     byDegree = nodes.slice().sort((a, b) => (b.type === 'note') - (a.type === 'note') || b.deg - a.deg);
+    // the file carries where each note settled (tools/bake-graph.html), so nothing needs working out here;
+    // without it the notes settle as the page loads — a moment's work, more on a phone
+    const baked = nodes.every(n => n.p);
     for (const n of nodes) {
-      // start each topic near its own spot, so the layout settles quickly
-      const a = n.g >= 0 && n.g < 7 ? n.g / 6 * Math.PI * 2 : Math.random() * Math.PI * 2;
-      const r = n.deg === 0 ? 120 + Math.sqrt(Math.random()) * 300 : n.g >= 0 && n.g < 7 ? 150 : 60 + Math.random() * 200;
-      n.x = Math.cos(a) * r + (Math.random() - 0.5) * 60;
-      n.y = Math.sin(a) * r + (Math.random() - 0.5) * 60;
-      n.r = n.type === 'file' ? 1.7 : 2.2 + Math.min(7, Math.sqrt(n.deg) * 1.05);
-      n.pull = n.deg === 0 ? 0.03 + Math.random() * 0.06 : 0.05;  // uneven pull: unlinked notes fill the edge unevenly, as in Obsidian
+      seat(n);
       n.delay = Math.random() * 0.45;                              // when this note starts drifting in, as the graph folds
+      // floating: a cluster sways together, each note a little on its own; loose notes drift further
+      n.ph = (n.g >= 0 ? n.g * 1.7 : Math.random() * 6.3) + Math.random() * 0.8;
+      n.ph2 = Math.random() * 6.3;
+      n.amp = n.deg === 0 ? 4.2 : n.deg > 8 ? 1.6 : 2.3;          // screen pixels
+      n.dx = n.x; n.dy = n.y; n.glow = -9;
     }
-    sim = forceSimulation(nodes)
-      .force('link', forceLink(links).distance(l => (l.source.deg > 10 || l.target.deg > 10) ? 28 : 18).strength(0.6))
-      .force('charge', forceManyBody().strength(-24).distanceMax(260).theta(0.9))
-      .force('x', forceX(0).strength(d => d.pull))
-      .force('y', forceY(0).strength(d => d.pull))
-      .force('collide', forceCollide(d => d.r + 2.4).iterations(1))
-      .alphaDecay(0.018)
-      .on('tick', () => { dirty = true; if (!touched) fit(0.12); });   // keep it framed while it settles
-    sim.stop();
-    for (let i = 0; i < 120; i++) sim.tick();                  // settle most of the way before the first frame
+    sim = settle(nodes, links).on('tick', () => { dirty = true; if (!touched) fit(0.12); });   // keep it framed while it settles
+    if (baked) sim.alpha(0);                                    // already settled: it only wakes when you drag a note
+    else for (let i = 0; i < 120; i++) sim.tick();              // settle most of the way before the first frame
     fit();
-    if (!fold) sim.restart();
+    if (!fold && !baked) sim.restart();
   }).catch(err => console.warn('Notes graph: could not load ' + url, err));
 
+  /* ---------- keeping it alive ---------- */
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let onScreen = true, pulses = [], nextPulse = 0, hubs = [];
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; }).observe(canvas);
+
+  /* where each note is drawn this frame: its place, plus a slow sway (the same few pixels at any zoom) */
+  function float(t) {
+    const s = 1 / view.k;
+    for (const n of nodes) {
+      const a = n.amp * s;
+      n.dx = n.x + a * (0.72 * Math.sin(t * 0.42 + n.y * 0.011 + n.ph) + 0.28 * Math.sin(t * 1.07 + n.ph2));
+      n.dy = n.y + a * (0.72 * Math.cos(t * 0.36 + n.x * 0.011 + n.ph) + 0.28 * Math.cos(t * 0.93 + n.ph2));
+    }
+  }
+  /* now and then a signal leaves a busy note for one of its neighbours; sometimes it carries on */
+  function signal(t) {
+    if (t >= nextPulse && pulses.length < 9) {
+      if (!hubs.length) hubs = byDegree.filter(n => n.deg >= 3);   // busier notes send more often
+      const from = hubs[Math.floor(Math.random() ** 1.6 * hubs.length)];
+      if (from) send(from, t);
+      nextPulse = t + 0.22 + Math.random() * 0.55;
+    }
+    pulses = pulses.filter(p => {
+      if (t < p.t0 + p.dur) return true;
+      p.to.glow = t;                                            // it arrives: the note glows
+      if (p.hops < 4 && Math.random() < 0.72 && pulses.length < 12) send(p.to, t, p.from, p.hops + 1);   // it travels on
+      return false;
+    });
+  }
+  function send(from, t, not, hops = 0) {
+    const next = [...adj[from.i]].filter(i => nodes[i] !== not);
+    if (!next.length) return;
+    const to = nodes[next[Math.floor(Math.random() * next.length)]];
+    const len = Math.hypot(to.x - from.x, to.y - from.y) * view.k;           // on screen
+    pulses.push({ from, to, hops, t0: t, dur: Math.min(1.6, 0.45 + len / 120) });
+  }
+
   /* ---------- drawing ---------- */
-  function draw() {
+  function draw(t = performance.now() / 1000) {
     dirty = false;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
@@ -102,12 +182,26 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
     ctx.lineWidth = 0.9 / k;
     ctx.strokeStyle = `rgba(${INK},${hover ? 0.05 : 0.13})`;
     ctx.beginPath();
-    for (const l of links) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
+    for (const l of links) { ctx.moveTo(l.source.dx, l.source.dy); ctx.lineTo(l.target.dx, l.target.dy); }
     ctx.stroke();
     if (hover) {
-      ctx.strokeStyle = ACCENT; ctx.lineWidth = 1.4 / k; ctx.beginPath();
-      for (const l of links) if (l.source === hover || l.target === hover) { ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); }
+      ctx.strokeStyle = `rgba(${INK},0.8)`; ctx.lineWidth = 1.4 / k; ctx.beginPath();
+      for (const l of links) if (l.source === hover || l.target === hover) { ctx.moveTo(l.source.dx, l.source.dy); ctx.lineTo(l.target.dx, l.target.dy); }
       ctx.stroke();
+    }
+
+    // signals on their way: a short bright trail with a head
+    ctx.lineCap = 'round';
+    for (const p of pulses) {
+      const u = Math.min(1, (t - p.t0) / p.dur), e = u * u * (3 - 2 * u), tail = Math.max(0, e - 0.45);
+      const ax = p.from.dx, ay = p.from.dy, bx = p.to.dx, by = p.to.dy;
+      const g = ctx.createLinearGradient(ax + (bx - ax) * tail, ay + (by - ay) * tail, ax + (bx - ax) * e, ay + (by - ay) * e);
+      g.addColorStop(0, `rgba(${INK},0)`); g.addColorStop(1, `rgba(${INK},${hover ? 0.25 : 0.75})`);
+      ctx.strokeStyle = g; ctx.lineWidth = 1.8 / k;
+      ctx.beginPath(); ctx.moveTo(ax + (bx - ax) * tail, ay + (by - ay) * tail); ctx.lineTo(ax + (bx - ax) * e, ay + (by - ay) * e); ctx.stroke();
+      ctx.fillStyle = `rgb(${INK})`; ctx.globalAlpha = hover ? 0.3 : 1;
+      ctx.beginPath(); ctx.arc(ax + (bx - ax) * e, ay + (by - ay) * e, 2.3 / k, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     // nodes, batched by look. They grow more slowly than the spacing between
@@ -118,13 +212,27 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
       if (n === hover) continue;
       const p = hover ? (lit(n) ? paths.near : paths.dim) : n.type === 'file' ? paths.file : paths.note;
       const r = n.r * shrink;
-      p.moveTo(n.x + r, n.y); p.arc(n.x, n.y, r, 0, Math.PI * 2);
+      p.moveTo(n.dx + r, n.dy); p.arc(n.dx, n.dy, r, 0, Math.PI * 2);
     }
     ctx.fillStyle = `rgba(${INK},0.3)`; ctx.fill(paths.file);
     ctx.fillStyle = `rgba(${INK},0.72)`; ctx.fill(paths.note);
     ctx.fillStyle = `rgba(${INK},0.1)`; ctx.fill(paths.dim);
     ctx.fillStyle = `rgba(${INK},0.9)`; ctx.fill(paths.near);
-    if (hover) { ctx.fillStyle = ACCENT; ctx.beginPath(); ctx.arc(hover.x, hover.y, hover.r * shrink + 1.2 / k, 0, Math.PI * 2); ctx.fill(); }
+    // a note a signal just reached: it darkens, and a ring spreads out and fades
+    for (const n of nodes) {
+      const age = t - n.glow;
+      if (age < 0 || age > 1) continue;
+      const r = n.r * shrink, f = 1 - age;
+      ctx.fillStyle = `rgba(${INK},${(f * (hover ? 0.3 : 0.95)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(n.dx, n.dy, r + 0.6 / k, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(${INK},${(f * f * 0.4).toFixed(3)})`; ctx.lineWidth = 1 / k;
+      ctx.beginPath(); ctx.arc(n.dx, n.dy, r + (2 + age * 9) / k, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (hover) {                                                // the note you're on: solid, with a ring round it
+      ctx.fillStyle = `rgb(${INK})`; ctx.beginPath(); ctx.arc(hover.dx, hover.dy, hover.r * shrink + 1.2 / k, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(${INK},0.45)`; ctx.lineWidth = 1 / k;
+      ctx.beginPath(); ctx.arc(hover.dx, hover.dy, hover.r * shrink + 4.5 / k, 0, Math.PI * 2); ctx.stroke();
+    }
     ctx.restore();
 
     // names fade in as you zoom closer, like Obsidian's text fade threshold.
@@ -152,11 +260,11 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
         const on = hover && lit(n);
         const a = on ? 1 : hover ? fadeIn * 0.25 : fadeIn * (n.type === 'file' ? 0.55 : 0.85);
         if (a < 0.02) continue;
-        const sx = view.x + n.x * k, sy = view.y + n.y * k + n.r * shrink * k + 5;
+        const sx = view.x + n.dx * k, sy = view.y + n.dy * k + n.r * shrink * k + 5;
         if (sx < -80 || sx > W + 80 || sy < -20 || sy > H + 20) continue;
         const w = ctx.measureText(n.name).width;
         if (!claim(sx - w / 2, sy, sx + w / 2, sy + 12, on)) continue;
-        ctx.fillStyle = n === hover ? ACCENT : `rgba(${INK},${a})`;
+        ctx.fillStyle = `rgba(${INK},${n === hover ? 1 : a})`;
         ctx.fillText(n.name, sx, sy);
       }
     }
@@ -181,17 +289,32 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
       for (const l of links) { ctx.moveTo(l.source.sx, l.source.sy); ctx.lineTo(l.target.sx, l.target.sy); }
       ctx.stroke();
     }
+    // batched by shade (to the nearest 5%), so a few fills draw every note
+    const shades = new Map();
     for (const n of nodes) {
-      ctx.fillStyle = `rgba(${INK},${n.sa})`;
-      ctx.beginPath(); ctx.arc(n.sx, n.sy, n.sr, 0, Math.PI * 2); ctx.fill();
+      const a = Math.round(n.sa * 20);
+      let p = shades.get(a);
+      if (!p) shades.set(a, p = new Path2D());
+      p.moveTo(n.sx + n.sr, n.sy); p.arc(n.sx, n.sy, n.sr, 0, Math.PI * 2);
     }
+    for (const [a, p] of shades) { ctx.fillStyle = `rgba(${INK},${a / 20})`; ctx.fill(p); }
     const core = dot * smooth(0.55, 1, fold);
     if (core > 0.2) { ctx.fillStyle = `rgb(${INK})`; ctx.beginPath(); ctx.arc(cx, cy, core, 0, Math.PI * 2); ctx.fill(); }
   }
 
-  (function loop() {
+  let lastLife = 0;
+  (function loop(now) {
     requestAnimationFrame(loop);
-    if (dirty) draw();
+    const t = (now || performance.now()) / 1000;
+    if (nodes.length && !fold) {
+      // alive: sway and signals, about 30 times a second (they're slow; anything you do redraws at once)
+      if (onScreen && !still && (dirty || t - lastLife > 1 / 31)) { lastLife = t; float(t); signal(t); dirty = true; }
+      else if (dirty) {
+        if (still) for (const n of nodes) { n.dx = n.x; n.dy = n.y; }
+        else float(t);
+      }
+    }
+    if (dirty) draw(t);
   })();
 
   /* ---------- interaction ---------- */

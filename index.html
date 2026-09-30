@@ -15,11 +15,13 @@
 
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "d3-force": "https://cdn.jsdelivr.net/npm/d3-force@3/+esm"
+  "d3-force": "https://cdn.jsdelivr.net/npm/d3-force@3/+esm",
+  "lenis": "https://cdn.jsdelivr.net/npm/lenis@1.3.17/dist/lenis.mjs"
 } }
 </script>
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" crossorigin>
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -29,13 +31,12 @@
 <div class="track" id="track">
   <main class="stage" id="stage">
     <canvas id="scene" aria-label="A pair of hands opening to reveal a globe of project cards"></canvas>
+    <canvas class="ink" id="ink" aria-hidden="true"></canvas>
 
     <header class="top">
-      <a class="brand" href="#" id="brand"><span class="dot"></span><span id="brandName"></span></a>
       <nav class="nav" aria-label="Sections">
-        <a href="#work" id="navWork">Work</a><a href="#about">About</a><a href="#contact">Contact</a>
+        <a href="#work" id="navWork">Work</a><a href="#desk">Behind the scenes</a><a href="#about">About</a><a href="#contact">Contact</a>
       </nav>
-      <div class="status" id="status"><i></i><span id="availability"></span><span class="tz"><span id="tzLabel"></span> <b id="clock"></b></span></div>
     </header>
 
     <!-- the landing: the name, a line, and beside it the notes every project grew out of -->
@@ -62,13 +63,41 @@
   </main>
 </div>
 
+<!-- the site's sections as a stack of folders (js/files.js): scroll through them to
+     Behind the scenes, whose sheet is the page below, and it opens out into it -->
+<section class="files" id="files" aria-label="Sections">
+  <div class="files-stage" id="filesStage"></div>
+</section>
+
+<!-- behind the scenes: GitHub, the music on, typing speed, coding time, what's on now,
+     the tools (js/desk.js) — on a desktop screen, all of it on one page. Its place in the
+     page is the slot; until you've scrolled it open, it sits in its folder's sheet, above. -->
+<div class="desk-slot" id="deskSlot">
+<section class="desk" id="desk" aria-labelledby="deskTitle">
+  <header class="desk-head">
+    <h2 class="desk-title" id="deskTitle"></h2>
+    <p class="desk-intro" id="deskIntro"></p>
+  </header>
+  <div class="desk-grid">
+    <article class="panel p-github" id="github" aria-label="GitHub activity"></article>
+    <article class="panel p-music" id="music" aria-label="Music player"></article>
+    <article class="panel p-typing" id="typing" aria-label="Typing speed"></article>
+    <article class="panel p-coding" id="coding" aria-label="Coding time"></article>
+    <article class="panel p-now" id="now" aria-label="Right now"></article>
+    <article class="panel p-tools" id="tools" aria-label="Tools"></article>
+  </div>
+  <canvas class="desk-ink" id="deskInk" aria-hidden="true"></canvas>
+  <div class="tip" id="tip" aria-hidden="true"></div>
+</section>
+</div>
+
 <section class="section" id="about">
-  <div class="sec-label">(01) About</div>
+  <div class="sec-label">(04) About</div>
   <p class="sec-lead" id="aboutText"></p>
 </section>
 
 <section class="section" id="contact">
-  <div class="sec-label">(02) Contact</div>
+  <div class="sec-label">(05) Contact</div>
   <div class="contact-body">
     <p class="sec-kicker">Have something in mind?</p>
     <a class="mail" id="mail" href="#"></a>

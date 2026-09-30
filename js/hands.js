@@ -16,6 +16,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { HAND, GLOBE } from './config.js';
 import { clamp, lerp, eio } from './utils.js';
 import { subdivideSkinned } from './subdivide.js';
+import { PERF } from './device.js';
 import { createSkinMaterials } from './skin.js';
 
 const TILT = 0.28;                                    // fingers raised above the forearms, radians
@@ -191,7 +192,9 @@ export function createHands(scene) {
     const side = new THREE.Group(); side.add(pivot);
     if (mirror) side.scale.x = -1;                              // the left hand is the right one, mirrored
     pair.add(side);
-    hands.push({ chains, pivot, holder, palmX });
+    let wrist = null;
+    model.traverse(o => { if (o.isBone && o.name === 'wrist' && !wrist) wrist = o; });
+    hands.push({ chains, pivot, holder, palmX, wrist });
   }
 
   const ready = new GLTFLoader().loadAsync(HAND.url).then(gltf => {
@@ -199,7 +202,7 @@ export function createHands(scene) {
     let mesh = null;
     model.traverse(o => { if (o.isSkinnedMesh) mesh = o; });
 
-    mesh.geometry = subdivideSkinned(mesh.geometry, HAND.subdivisions);
+    mesh.geometry = subdivideSkinned(mesh.geometry, Math.min(HAND.subdivisions, PERF.subdiv));   // phones: one step smoother, not two
     const chains = chainsOf(model);
     rig = measureRig(mesh.geometry, chains);
     const mats = createSkinMaterials(rig, HAND.tones);
@@ -225,17 +228,27 @@ export function createHands(scene) {
   }).catch(err => console.warn('Hand model failed to load — the globe still works without it.', err));
 
   /* where the globe sits: between the palms when closed, in the cup when open */
-  const cup = new THREE.Vector3();
-  function update(time, open, sink = 0, enter = 1) {
+  const cup = new THREE.Vector3(), _w = new THREE.Vector3();
+  /* below: how far down the hands wait before they rise, metres (deeper on tall narrow screens, which see further down).
+     edge(z) → y: on a tall screen (a phone), the bottom of the view at depth z. It sees much further down
+     than a laptop — far enough to show the forearms — so there the hands keep their wrists just below it:
+     the whole palm in view, no arm, however the pose moves the wrists */
+  function update(time, open, sink = 0, enter = 1, below = 0.2, edge = null) {
     const o = eio(open);
     pair.rotation.x = TILT;
-    // rise into view from below the page, and settle a little once the globe has left
-    pair.position.set(0, BASE_Y + Math.sin(time * 0.7) * 0.0015 - (1 - enter) * 0.2 - sink * 0.015, 0);
+    pair.position.set(0, BASE_Y + Math.sin(time * 0.7) * 0.0015, 0);
     for (const h of hands) {
       h.pivot.rotation.z = -OPEN_ANGLE * o;
       h.holder.position.x = lerp(GAP.closed, GAP.open, o) - h.palmX;
       poseHand(h.chains, open, time);
     }
+    if (edge && hands[0]?.wrist) {
+      pair.updateMatrixWorld();
+      hands[0].wrist.getWorldPosition(_w);
+      pair.position.y -= _w.y - (edge(_w.z) - 0.022);        // wrist centre a little under the edge, so none of the arm shows
+    }
+    // rise into view from below the page, and settle a little once the globe has left
+    pair.position.y -= (1 - enter) * below + sink * 0.015;
     // tucked up under the thumbs; the globe leaves from here as the hands part
     cup.set(0, 0.036, -0.04);
     pair.updateMatrixWorld();

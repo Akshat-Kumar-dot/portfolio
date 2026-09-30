@@ -8,6 +8,7 @@
    shows a quiet wireframe of a typical interface for its type.
    ============================================================ */
 import { TAU, pad, rng } from './utils.js';
+import { PERF } from './device.js';
 
 export const COVER_W = 1024, COVER_H = 640;
 const SERIF = '"Instrument Serif", Georgia, serif';
@@ -30,6 +31,7 @@ const PALETTES = [
 ];
 
 const rr = (x, X, Y, W, H, r) => { x.beginPath(); x.roundRect(X, Y, W, H, r); };
+const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const alpha = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 
 /* ---------- wireframe interfaces, one per project type ---------- */
@@ -231,12 +233,15 @@ function wrapLines(x, text, maxW) {
 }
 
 /* Draws one cover. Returns the canvas; if the project has an `img`,
-   `onReady` fires again once the screenshot has been painted in.   */
+   `onReady` fires again once the screenshot has been painted in.
+   A project with a `video` gets a player in its window, and the canvas
+   carries `player` — where the picture and the timeline sit — for the globe. */
 export function drawCover(item, index, total, onReady) {
-  const C0 = PALETTES[index % PALETTES.length];
+  const C0 = { ...PALETTES[index % PALETTES.length], ...item.colors };   // a project can set its own colours
   const c = document.createElement('canvas');
-  c.width = COVER_W; c.height = COVER_H;
+  c.width = Math.round(COVER_W * PERF.cover); c.height = Math.round(COVER_H * PERF.cover);   // phones: half size — plenty for their screens
   const x = c.getContext('2d');
+  x.scale(PERF.cover, PERF.cover);                           // everything below is drawn in COVER_W × COVER_H units
   const r = rng(item.title + index);
   const C = { ...C0, ink: C0.wink, soft: alpha(C0.wink, 0.22), faint: alpha(C0.wink, 0.07),
               acc2: C0.acc === '#c65a3a' ? '#e2a93b' : '#c65a3a' };
@@ -256,11 +261,79 @@ export function drawCover(item, index, total, onReady) {
   for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(WX + 22 + i * 16, WY + 18, 5, 0, TAU); x.fill(); }
   x.fillStyle = alpha(C0.wink, 0.07); rr(x, WX + WW / 2 - 110, WY + 9, 220, 18, 9); x.fill();
   const inner = { X: WX, Y: WY + 36, W: WW, H: WH - 36 };
-  x.save(); rr(x, inner.X, inner.Y, inner.W, inner.H, [0, 0, 14, 14]); x.clip();
-  const s = (inner.W - 40) / 430;                             // the wireframes are drawn at 430 wide
-  x.translate(inner.X + 20, inner.Y + 16); x.scale(s, s);
-  UI[index % UI.length](x, { X: 0, Y: 0, W: 430, H: (inner.H - 36) / s }, C, r);
-  x.restore();
+  let media = inner;                                           // where a screenshot goes
+  if (item.video) {
+    // a little video player: the clip across the top, fitted whole; a timeline, the controls
+    // and a caption under it. The globe paints the moving picture, the timeline's progress
+    // and the running time over this (globe.js)
+    const ink = a => alpha(C0.wink, a);
+    const V = { x: inner.X, y: inner.Y, w: inner.W, h: Math.round(inner.W * 9 / 16) };
+    const B = { x: inner.X + 24, y: V.y + V.h + 22, w: inner.W - 48, h: 4 };
+    x.fillStyle = '#000'; x.fillRect(V.x, V.y, V.w, V.h);                // the screen, until the picture arrives
+    x.fillStyle = ink(0.16); rr(x, B.x, B.y, B.w, B.h, 2); x.fill();      // timeline
+
+    // controls: pause (it's playing), back, forward, sound off — then the time; CC, HD, full screen on the right
+    const cy = B.y + 36;
+    x.fillStyle = ink(0.9); x.strokeStyle = ink(0.9); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.fillRect(B.x + 1, cy - 9, 5, 18); x.fillRect(B.x + 11, cy - 9, 5, 18);
+    const tri = (tx, dir) => { x.beginPath(); x.moveTo(tx, cy - 7); x.lineTo(tx + 11 * dir, cy); x.lineTo(tx, cy + 7); x.closePath(); x.fill(); };
+    x.fillStyle = ink(0.6);
+    x.fillRect(B.x + 40, cy - 7, 2.6, 14); tri(B.x + 55, -1);
+    tri(B.x + 68, 1); x.fillRect(B.x + 80, cy - 7, 2.6, 14);
+    const sx = B.x + 104;
+    x.beginPath(); x.moveTo(sx, cy - 4); x.lineTo(sx + 5, cy - 4); x.lineTo(sx + 11, cy - 9); x.lineTo(sx + 11, cy + 9);
+    x.lineTo(sx + 5, cy + 4); x.lineTo(sx, cy + 4); x.closePath(); x.fill();
+    x.strokeStyle = ink(0.6); x.lineWidth = 2;
+    x.beginPath(); x.moveTo(sx + 16, cy - 5); x.lineTo(sx + 25, cy + 4); x.moveTo(sx + 25, cy - 5); x.lineTo(sx + 16, cy + 4); x.stroke();
+    const T = { x: sx + 46, y: cy - 13, w: 170, h: 26 };
+    const drawTime = (t, d) => {
+      x.save(); x.fillStyle = C0.win; x.fillRect(T.x, T.y, T.w, T.h);
+      if ('letterSpacing' in x) x.letterSpacing = '1px';
+      x.font = `500 15px ${MONO}`; x.textBaseline = 'middle';
+      x.fillStyle = ink(0.9); x.fillText(clock(t), T.x, cy);
+      const w = x.measureText(clock(t)).width;
+      x.fillStyle = ink(0.45); x.fillText(' / ' + clock(d), T.x + w, cy);
+      x.restore();
+    };
+    drawTime(0, 0);
+    spacing('1px');
+    x.font = `600 12px ${MONO}`; x.textBaseline = 'middle';
+    const badge = (label, rx) => {
+      const w = x.measureText(label).width + 14;
+      x.strokeStyle = ink(0.45); x.lineWidth = 1.5; rr(x, rx - w, cy - 11, w, 22, 4); x.stroke();
+      x.fillStyle = ink(0.7); x.fillText(label, rx - w + 7, cy + 1);
+      return rx - w - 10;
+    };
+    const fx = B.x + B.w;
+    x.strokeStyle = ink(0.6); x.lineWidth = 2.2;
+    x.beginPath();
+    for (const [ax, ay] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const px = fx - 9 + ax * 9, py = cy + ay * 8;
+      x.moveTo(px, py - ay * 6); x.lineTo(px, py); x.lineTo(px - ax * 6, py);
+    }
+    x.stroke();
+    badge('CC', badge('HD', fx - 30));
+    x.textBaseline = 'alphabetic';
+
+    // caption and credit
+    spacing('0px');
+    x.font = `400 26px ${SERIF}`; x.fillStyle = ink(0.92);
+    x.fillText(item.caption || item.video.split('/').pop(), B.x, B.y + 96);
+    spacing('2px');
+    x.font = `500 12px ${MONO}`; x.fillStyle = ink(0.45);
+    x.fillText((item.credit || '').toUpperCase(), B.x, B.y + 124);
+    x.textAlign = 'right'; x.fillText('MUTED · LOOP', fx, B.y + 124); x.textAlign = 'left';
+    spacing('0px');
+
+    c.player = { video: V, bar: B, fill: C0.wink, drawTime };
+    media = { X: V.x, Y: V.y, W: V.w, H: V.h };
+  } else {
+    x.save(); rr(x, inner.X, inner.Y, inner.W, inner.H, [0, 0, 14, 14]); x.clip();
+    const s = (inner.W - 40) / 430;                           // the wireframes are drawn at 430 wide
+    x.translate(inner.X + 20, inner.Y + 16); x.scale(s, s);
+    UI[index % UI.length](x, { X: 0, Y: 0, W: 430, H: (inner.H - 36) / s }, C, r);
+    x.restore();
+  }
 
   // text, right
   const TX = WX + WW + 32, TW = COVER_W - TX - 32;
@@ -297,13 +370,13 @@ export function drawCover(item, index, total, onReady) {
   x.textAlign = 'right'; x.fillText('OPEN ↗', TX + TW, COVER_H - 48); x.textAlign = 'left';
   x.globalAlpha = 1;
 
-  // a real screenshot, if there is one, replaces the wireframe
+  // a real screenshot, if there is one, replaces the wireframe (for a video, it's the still shown until it plays)
   if (item.img && onReady) {
     const im = new Image();
     im.onload = () => {
-      x.save(); rr(x, inner.X, inner.Y, inner.W, inner.H, [0, 0, 14, 14]); x.clip();
-      const k = Math.max(inner.W / im.width, inner.H / im.height);
-      x.drawImage(im, inner.X + (inner.W - im.width * k) / 2, inner.Y + (inner.H - im.height * k) / 2, im.width * k, im.height * k);
+      x.save(); rr(x, media.X, media.Y, media.W, media.H, media === inner ? [0, 0, 14, 14] : 0); x.clip();
+      const k = Math.max(media.W / im.width, media.H / im.height);
+      x.drawImage(im, media.X + (media.W - im.width * k) / 2, media.Y + (media.H - im.height * k) / 2, im.width * k, im.height * k);
       x.restore();
       onReady(c);
     };

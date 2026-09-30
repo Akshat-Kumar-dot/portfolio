@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { WORK, GLOBE } from './config.js';
 import { drawCover, COVER_W, COVER_H } from './covers.js';
+import { PERF, TIER } from './device.js';
 
 const PAPER = new THREE.Color('#e9e2d6');         // the back of each card
 const TAU = Math.PI * 2;
@@ -40,7 +41,37 @@ function capTexture() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-function cardMaterial(map) {
+/* a card whose project has a video: the picture plays in the player drawn on its cover
+   (fitted whole inside it), and the timeline under it fills as it goes */
+const PLAYER_HEAD = `
+uniform sampler2D uVideo;
+uniform float uVideoOn, uVideoAspect, uProgress;
+uniform vec4 uVidRect, uBarRect;
+uniform vec3 uBarFill;
+`;
+const PLAYER_PAINT = `
+  vec3 playerCol = vec3(0.0), playerGlow = vec3(0.0); float playerMix = 0.0;
+  if (gl_FrontFacing) {
+    vec2 cp = vec2(vMapUv.x, 1.0 - vMapUv.y) * vec2(${COVER_W}.0, ${COVER_H}.0);   // canvas pixels
+    vec2 q = (cp - uVidRect.xy) / uVidRect.zw, v = q;
+    float ra = uVidRect.z / uVidRect.w;
+    if (uVideoAspect > ra) v.y = (q.y - 0.5) * uVideoAspect / ra + 0.5; else v.x = (q.x - 0.5) * ra / uVideoAspect + 0.5;
+    if (uVideoOn > 0.5 && all(greaterThanEqual(v, vec2(0.0))) && all(lessThanEqual(v, vec2(1.0)))) {
+      // a screen lights itself: mostly glow, a little of the room's light, so it shows at its own brightness
+      vec3 c = texture2D(uVideo, vec2(v.x, 1.0 - v.y)).rgb;
+      playerCol = c * 0.12; playerGlow = c * 0.84; playerMix = 1.0;
+    }
+    // the timeline fills as it plays, a knob riding its end
+    vec2 b = (cp - uBarRect.xy) / uBarRect.zw;
+    float fill = step(0.0, b.x) * step(b.x, uProgress) * step(0.0, b.y) * step(b.y, 1.0);
+    float knob = uVideoOn * (1.0 - smoothstep(6.0, 7.5, distance(cp, uBarRect.xy + vec2(uBarRect.z * uProgress, uBarRect.w * 0.5))));
+    float ui = max(fill, knob);
+    if (ui > 0.0) { playerCol = mix(playerCol, uBarFill, ui); playerGlow = mix(playerGlow, emissive * uBarFill, ui); playerMix = max(playerMix, ui); }
+    diffuseColor.rgb = mix(diffuseColor.rgb, playerCol, playerMix);
+  }
+`;
+
+function cardMaterial(map, player) {
   const m = new THREE.MeshStandardMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.2,
     roughness: 0.85, metalness: 0, envMapIntensity: 0.35, side: THREE.DoubleSide,   // printed card, not glossy
@@ -48,27 +79,81 @@ function cardMaterial(map) {
   });
   m.onBeforeCompile = sh => {
     sh.uniforms.uPaper = { value: PAPER };
-    sh.fragmentShader = 'uniform vec3 uPaper;\n' + sh.fragmentShader
-      .replace('#include <map_fragment>', '#include <map_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb = uPaper;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (!gl_FrontFacing) totalEmissiveRadiance *= 0.0;');
+    if (player) Object.assign(sh.uniforms, player.uniforms);
+    sh.fragmentShader = 'uniform vec3 uPaper;\n' + (player ? PLAYER_HEAD : '') + sh.fragmentShader
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb = uPaper;' + (player ? PLAYER_PAINT : ''))
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (!gl_FrontFacing) totalEmissiveRadiance *= 0.0;' +
+        (player ? '\n  if (playerMix > 0.0) totalEmissiveRadiance = mix(totalEmissiveRadiance, playerGlow, playerMix);' : ''));
   };
-  m.customProgramCacheKey = () => 'card-v1';
+  m.customProgramCacheKey = () => player ? 'card-player-v1' : 'card-v1';
   return m;
 }
 
-export function createGlobe(renderer) {
+/* the video for a project that has one: muted, looping, and only playing while the globe is on screen */
+function makePlayer(item, cover, coverTex, reduced) {
+  const v = document.createElement('video');
+  Object.assign(v, { muted: true, loop: true, playsInline: true, preload: TIER === 'full' ? 'auto' : 'metadata', crossOrigin: 'anonymous' });   // phones fetch the clip when it plays
+  v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('aria-hidden', 'true');
+  // on the page but out of sight: browsers pause a muted video they think nobody can see
+  v.className = 'globe-video';
+  document.body.append(v);
+  v.src = item.video;
+  const tex = new THREE.VideoTexture(v);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const { video: V, bar: B, fill } = cover.player;
+  const uniforms = {
+    uVideo: { value: tex }, uVideoOn: { value: 0 }, uVideoAspect: { value: 16 / 9 }, uProgress: { value: 0 },
+    uVidRect: { value: new THREE.Vector4(V.x, V.y, V.w, V.h) }, uBarRect: { value: new THREE.Vector4(B.x, B.y, B.w, B.h) },
+    uBarFill: { value: new THREE.Color(fill) }
+  };
+  // the running time on the card's canvas, redrawn once a second
+  let shownSec = -1;
+  const showTime = () => {
+    const s = Math.floor(v.currentTime);
+    if (s === shownSec || !v.duration) return;
+    shownSec = s;
+    cover.player.drawTime(s, Math.round(v.duration));
+    coverTex.needsUpdate = true;
+  };
+  v.addEventListener('loadedmetadata', () => { uniforms.uVideoAspect.value = v.videoWidth / v.videoHeight; showTime(); });
+  v.addEventListener('playing', () => { uniforms.uVideoOn.value = 1; });
+  return {
+    uniforms, el: v,
+    /* on: from the start. off: stopped, and the card goes back to its still, timeline empty */
+    play(on) {
+      if (on && !reduced) {
+        if (v.paused) { v.currentTime = 0; v.play().catch(() => {}); }   // autoplay can be refused: the still stays
+        return;
+      }
+      if (!v.paused) v.pause();
+      uniforms.uVideoOn.value = 0; uniforms.uProgress.value = 0;
+      shownSec = -1;
+      if (v.duration) { cover.player.drawTime(0, Math.round(v.duration)); coverTex.needsUpdate = true; }
+    },
+    tick() {
+      if (v.paused) return;
+      uniforms.uProgress.value = v.duration ? v.currentTime / v.duration : 0;
+      showTime();
+    }
+  };
+}
+
+export function createGlobe(renderer, { reduced = false } = {}) {
   const group = new THREE.Group();
   const spinner = new THREE.Group();
   group.add(spinner);
 
   const CW = GLOBE.cardWidth, CH = CW * (COVER_H / COVER_W);
   const geo = wrap(new THREE.PlaneGeometry(CW, CH, 14, 10));
-  const aniso = renderer.capabilities.getMaxAnisotropy();
+  const aniso = Math.min(renderer.capabilities.getMaxAnisotropy(), PERF.aniso);
 
+  const players = [];
   const textures = WORK.map((item, i) => {
-    const t = new THREE.CanvasTexture(drawCover(item, i, WORK.length, () => { t.needsUpdate = true; }));
+    const cover = drawCover(item, i, WORK.length, () => { t.needsUpdate = true; });
+    const t = new THREE.CanvasTexture(cover);
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
+    players[i] = item.video && cover.player ? makePlayer(item, cover, t, reduced) : null;
     return t;
   });
 
@@ -84,7 +169,7 @@ export function createGlobe(renderer) {
     for (let j = 0; j < n; j++) {
       const lon = (j + (r % 2) * 0.5) / n * TAU;
       const k = (slot * 5 + 3) % WORK.length;                  // neighbours are never the same project
-      const mesh = new THREE.Mesh(geo, cardMaterial(textures[k]));
+      const mesh = new THREE.Mesh(geo, cardMaterial(textures[k], players[k]));
       mesh.castShadow = true;
       mesh.quaternion.setFromEuler(new THREE.Euler(-lat, lon, 0, 'YXZ'));
       const dir = new THREE.Vector3(Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon));
@@ -131,19 +216,30 @@ export function createGlobe(renderer) {
     if (on && !focus) aimAt(nearestTo(tilt, spin));
     if (!on && focus) { focus = null; vSpin = vTilt = 0; }
   }
-  /* move the focus: dx = ±1 column (right/left), dy = ±1 row (up/down) */
+  /* move the focus: dx = ±1 column (right/left), dy = ±1 row (up/down).
+     Returns false when there's no row that way (you're at the top or bottom). */
   function stepFocus(dx, dy) {
-    if (!focus) return;
+    if (!focus) return false;
     if (dx) {
       const row = rows[focus.row];
       aimAt(row.cards[(focus.col + dx + row.n) % row.n]);
     } else if (dy) {
       const r = rows[focus.row + dy];
-      if (!r) return;
+      if (!r) return false;
       let best = r.cards[0];
       for (const c of r.cards) if (Math.abs(wrapAngle(c.lon - focus.lon)) < Math.abs(wrapAngle(best.lon - focus.lon))) best = c;
       aimAt(best);
     }
+    return true;
+  }
+  /* turn to row r (0 = the lowest), to the card on it nearest the one you're on — so scrolling
+     walks straight up or down the globe, and a sideways move you've made is kept */
+  function aimRow(r) {
+    const row = rows[Math.max(0, Math.min(rows.length - 1, r))];
+    const lon = focus ? focus.lon : -spin;                   // the front of the globe faces the viewer at lon = −spin
+    let best = row.cards[0];
+    for (const c of row.cards) if (Math.abs(wrapAngle(c.lon - lon)) < Math.abs(wrapAngle(best.lon - lon))) best = c;
+    aimAt(best);
   }
   function focusCard(card) { if (focus && card) aimAt(card); }
 
@@ -180,7 +276,18 @@ export function createGlobe(renderer) {
   }
 
   /* s = { scrollSpin, hovered, dragging, idle, peek: {x, y} } */
+  /* a project's video plays only while its card is the one you've stopped on (k = its
+     index in WORK; −1 plays nothing) — main.js decides, from the zoomed-in view */
+  const videos = players.filter(Boolean);
+  let playingK = null;
+  function setPlaying(k) {
+    if (k === playingK) return;
+    playingK = k;
+    players.forEach((p, i) => p?.play(i === k));
+  }
+
   function update(dt, s) {
+    for (const p of videos) p.tick();
     if (focus) {
       if (!s.dragging) {
         const k = 1 - Math.pow(0.0006, dt);                  // settle onto the focused card
@@ -205,6 +312,8 @@ export function createGlobe(renderer) {
     }
   }
 
-  return { group, cards, update, pick, drag, release, setFocus, stepFocus, focusCard,
-           get focus() { return focus; } };
+  return { group, cards, update, pick, drag, release, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos,
+           get focus() { return focus; },
+           /* the focused card has arrived in the middle (not still swinging in) */
+           get settled() { return !!focus && Math.abs(wrapAngle(spinT - spin)) < 0.02 && Math.abs(tiltT - tilt) < 0.02; } };
 }

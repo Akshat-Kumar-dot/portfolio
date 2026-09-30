@@ -12,8 +12,6 @@ export const SITE = {
   headline: ['Software and AI,', 'made by *hand*'],
   role: 'Software & AI developer',
   location: 'India',
-  timeZone: 'Asia/Kolkata', tzLabel: 'IST',   // your local time, shown in the top bar
-  available: 'Available for work',            // '' hides the status
   about: 'I design and build software and AI tools — from the first sketch to the last pixel, and the model and the servers underneath. I care about the details people feel but rarely notice. (Replace this with a few lines about you.)',
   email: 'akshat.kumar.singh05@gmail.com',
   links: [
@@ -26,7 +24,14 @@ export const SITE = {
 /* One entry per project. The globe repeats the list to fill every
    card, so each project shows up several times around the sphere.
    Add `img: 'assets/projects/my-shot.jpg'` to show a real screenshot
-   in the card's window (roughly 6:5, e.g. 1200 × 1000, fits best).  */
+   in the card's window (roughly 6:5, e.g. 1200 × 1000, fits best).
+   Add `video: 'assets/projects/clip.mp4'` and the window becomes a little
+   player: the clip loops, muted, fitted whole (never cropped), with a
+   timeline under it; `img` is then the still shown until it plays,
+   `caption` and `credit` the two lines under the controls.
+   Keep clips short and small — ~10 s, 720 px wide, H.264 MP4.
+   `colors: { bg, ink, win, wink, acc }` gives a card its own colours:
+   card, text, window, window text, accent.                            */
 export const WORK = [
   { title: 'Project 01', tag: 'Web App',      year: '2026', url: '#',
     desc: 'A marketing site and booking flow, designed and built end to end.' },
@@ -36,8 +41,11 @@ export const WORK = [
     desc: 'A habit tracker that works offline and syncs when it can.' },
   { title: 'Project 04', tag: 'AI Tool',      year: '2025', url: '#',
     desc: 'Ask questions of your own notes and get answers with sources.' },
-  { title: 'Project 05', tag: 'Dev Tool',     year: '2025', url: '#',
-    desc: 'An editor extension that explains and refactors code in place.' },
+  { title: 'Resume', tag: 'CV',               year: '2025', url: '#',        // ← url: your résumé, e.g. 'assets/resume.pdf'
+    desc: 'Where I’ve worked, what I’ve built, and what I know — on one page.',
+    video: 'assets/projects/resume.mp4', img: 'assets/projects/resume.jpg',
+    caption: 'Handing over the résumé', credit: 'Clip · The Office (NBC)',
+    colors: { bg: '#241412', ink: '#f6ece2', win: '#0c0b0a', wink: '#ece4d9', acc: '#e0896a' } },   // dark oxblood
   { title: 'Project 06', tag: 'Maps',         year: '2025', url: '#',
     desc: 'Finding quiet places to work, from crowd data and open maps.' },
   { title: 'Project 07', tag: 'Commerce',     year: '2024', url: '#',
@@ -65,23 +73,92 @@ export const GLOBE = {
   spin: 0.12             // idle rotation, radians per second
 };
 
-/* Scroll choreography, as fractions of the scroll track (0 → 1).
-   The track's length is `.track { height }` in css/style.css.     */
-export const SCROLL = {
-  intro:    [0.00, 0.05],   // the headline lifts away
-  collapse: [0.00, 0.07],   // the notes graph folds down into a single dot
-  drop:     [0.07, 0.14],   // the dot falls and slips between the thumbs of the rising hands
-  enter:    [0.02, 0.14],   // the closed hands rise into view from below the page
-  open:     [0.155, 0.37],  // they part…
-  lift:     [0.16, 0.57],   // …and the globe rises out of them as they do, growing as it goes
-  zoom:     [0.67, 0.93],   // then you step inside: one card fills the screen, its neighbours curve away
-  spin:     5.5             // radians the globe turns while it rises
+/* Scroll choreography, in vh of scrolling from the top (100 = one screen's
+   height). Everything follows the scroll directly and runs backwards when
+   you scroll back up. The story is as long as its last number.          */
+const STORY = {
+  intro:    [0, 30],        // the headline lifts away
+  collapse: [0, 45],        // the notes graph gathers into a single dot
+  drop:     [45, 95],       // the dot falls and slips between the thumbs of the rising hands
+  enter:    [12, 95],       // the closed hands rise into view from below the page
+  open:     [101, 187],     // they part…
+  lift:     [103, 267],     // …and the globe rises out of them as they do, growing as it goes
+  zoom:     [295, 381],     // then you step inside: one card fills the screen, its neighbours curve away
+  browse:   [381, 589]      // scrolling on walks down the globe row by row (BROWSE); then the folders
 };
+export const STORY_VH = 589;
+
+/* However hard you scroll, these stretches play no faster than this, in vh a second:
+   a hard flick plays them through at a pace you can follow, then catches up with the page. */
+const PACE = [
+  [0, 95, 62],              // the notes gather and the dot falls into the hands
+  [95, 267, 135],           // the hands part and the globe rises
+  [295, 381, 86]            // stepping inside the globe
+];
+export const SCROLL = {                                   // the same, as fractions of the story (0 → 1)
+  ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [a / STORY_VH, b / STORY_VH]])),
+  spin: 7.2,                // radians the globe turns while it rises
+  pace: PACE.map(([a, b, v]) => [a / STORY_VH, b / STORY_VH, v / STORY_VH])
+};
+
+/* Inside the globe, scrolling walks through these rows, top to bottom
+   (0 is the lowest row, GLOBE.rows − 1 the highest) — up and down the
+   globe with the scroll, one row per stretch of browse.               */
+export const BROWSE = { from: 8, to: 1 };
 
 /* Zoomed in: how much of the screen the centre card takes up. */
 export const ZOOM = {
   height: 0.6,           // at most this fraction of the screen's height
   width: 0.56            // and at most this fraction of its width
+};
+
+/* Behind the scenes — the page after the work, before About: how you work,
+   and what you've got on while you do. Live where it can be, sample data where it
+   isn't set up yet. Everything marked ← is a placeholder: put yours in.   */
+export const DESK = {
+  title: ['Behind', 'the *scenes*'], // the page's name; its folder's tab says it too
+  intro: 'The speed, the soundtrack and the habits behind the work.',
+
+  // your best typing test; visitors can race it on the page
+  typing: { wpm: 92, accuracy: 97, test: 'Monkeytype · 60 s' },   // ← your real numbers
+
+  // your GitHub username, e.g. 'akshatkumar'. Empty shows made-up sample activity.
+  github: '',                                                      // ←
+
+  // WakaTime share links (wakatime.com → Share → "Coding Activity" and "Languages", format JSON).
+  // Empty shows sample numbers.
+  wakatime: { activity: '', languages: '' },                       // ←
+
+  // what you're up to; the player fills in "Listening" itself
+  updated: 'September 2026',
+  now: [                                                           // ←
+    ['Building', 'This portfolio — hands, a globe, and a notes graph'],
+    ['Learning', 'Fine-tuning small language models'],
+    ['Reading', 'Designing Data-Intensive Applications']
+  ],
+
+  tools: [                                                         // ←
+    ['Languages', ['Python', 'TypeScript', 'C++', 'SQL']],
+    ['AI', ['PyTorch', 'Hugging Face', 'LangChain', 'OpenCV']],
+    ['Web', ['React', 'Next.js', 'Three.js', 'Node']],
+    ['Every day', ['VS Code', 'Git', 'Obsidian', 'Figma']]
+  ],
+
+  // songs for the player: files you have the right to publish, in assets/music.
+  // Empty plays a loop the page composes itself, in the browser.
+  music: [
+    // { title: 'Song name', artist: 'Artist', src: 'assets/music/song.mp3' },
+  ]
+};
+
+/* After the globe: the site's sections as a stack of folders. Scrolling
+   goes through them to Behind the scenes, and scrolling on opens it: its
+   sheet grows into the page. All of it follows the scroll, both ways.   */
+export const FILES = {
+  notes: 'Where every project starts — a vault of linked notes.',   // the line on the Notes folder's sheet
+  cue: 'Keep scrolling to open',
+  stepVh: 30,                        // scrolling from one folder to the next, in vh
+  openVh: 55                         // scrolling to open Behind the scenes into the page, in vh
 };
 
 /* The hands. Colours are taken from real skin: backs darker, palms lighter. */
