@@ -127,10 +127,7 @@ function render(el, { days, repos, publicRepos }, tip) {
       `<li><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a><span>${esc(r.lang || '')}</span><span>${ago(r.pushed)}</span></li>`).join('')}</ul>`;
   }
 
-  // the grid fills in, a week at a time, the first time it comes into view
-  new IntersectionObserver((entries, io) => {
-    if (entries.some(e => e.isIntersecting)) { svg.classList.add('lit'); io.disconnect(); }
-  }, { threshold: 0.3 }).observe(svg);
+  // (the grid fills in a week at a time as its panel comes up the screen: style.css, js/desk.js)
 }
 
 function ago(when) {

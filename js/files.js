@@ -124,7 +124,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
      The section is a screen plus the scrolling it takes: STEP per folder up to the page,
      then OPEN. The page's place (#deskSlot) starts a screen before the section ends, so
      the moment the opening finishes, the top of the screen is exactly the top of the page. */
-  let W = 0, H = 0, T = 26, geo = [], s0 = 1, s1 = 1, STEP = 1, OPEN = 1, L = 1, CLOSE = 0, PRE = 0, BUF = 0, LAND = 0, SHIFT = 0;
+  let W = 0, H = 0, T = 26, geo = [], s0 = 1, s1 = 1, STEP = 1, OPEN = 1, L = 1, CLOSE = 0, PRE = 0, BUF = 0, LAND = 0, SHIFT = 0, shotOn = false;
   function fit() {
     if (!root.clientWidth || !innerHeight) return;            // not laid out yet (a tab opened in the background)
     W = root.clientWidth; H = innerHeight;
@@ -166,7 +166,8 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
     if (shot) {
       s1 = (geo[holder].w - INSET * 2) / W;
       Object.assign(shot.style, { width: W + 'px', height: H + 'px', transform: `scale(${s1})` });
-      hf.sheet.style.height = Math.max(H * s1, geo[holder].h) + 'px';
+      // (once it holds the page's picture the sheet is exactly as tall as the page it shows: draw())
+      hf.sheet.style.height = (shotOn ? s1 * (H - SHIFT) : Math.max(H * s1, geo[holder].h)) + 'px';
     }
     Object.assign(slot.style, { height: pageH + 'px', marginTop: -(H + BUF) + 'px' });
     place();
@@ -232,7 +233,13 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
       if (f.cover || !f.sheet) return;
       const opening = i === target ? o : i === holder && shot ? c : 0, E = i === target ? O : C, s = i === target ? s0 : s1;
       const up = l * (i === target || (i === holder && shot) ? LAND : PASS);
-      if (i === holder && shot) shot.style.transform = `scale(${s1}) translateY(${(-SHIFT * (1 - (opening ? E.grow : 0))).toFixed(1)}px)`;
+      if (i === holder && shotOn) {
+        // in the folder the picture slides up to keep the globe above the folder's front; the sheet ends exactly
+        // where the page does, so as it closes it's the page itself, edge to edge — no blank paper below it
+        const shift = SHIFT * (1 - (opening ? E.grow : 0));
+        shot.style.transform = `scale(${s1}) translateY(${(-shift).toFixed(1)}px)`;
+        f.sheet.style.height = (s1 * (H - shift)).toFixed(1) + 'px';
+      }
       if (!opening) {
         f.sheet.style.transform = `translateY(${(-up).toFixed(1)}px)`;
         if (i === target || i === holder) {
@@ -252,7 +259,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
       const tx = -x0 * E.grow, ty = top - y0, sc = 1 + (1 / s - 1) * E.grow;
       f.sheet.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${sc.toFixed(5)})`;
       const r = (6 * (1 - E.grow)).toFixed(2);
-      f.sheet.style.borderRadius = `${r}px ${r}px 0 0`;
+      f.sheet.style.borderRadius = i === holder && shotOn ? `${r}px` : `${r}px ${r}px 0 0`;   // the globe's page shows its foot as it closes
       f.sheet.style.boxShadow = E.grow > 0.9 ? 'none' : '';
       // at the very end the paper thins away, leaving the page on the site's own background — as it is out of the folder
       f.sheet.style.background = i === target ? `rgba(251,248,241,${(1 - sm([0.6, 1], E.grow)).toFixed(3)})` : '';
@@ -288,6 +295,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
         const ro = $('readout')?.cloneNode(true);
         if (ro) { ro.querySelectorAll('[id]').forEach(e => e.removeAttribute('id')); ro.removeAttribute('id'); ro.classList.remove('away', 'swap'); shot.append(ro); }
         hf.sheet.classList.add('has-shot');
+        shotOn = true;
         place();
       }
     }

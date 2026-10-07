@@ -88,26 +88,35 @@ const STORY = {
   lift:     [103, 267],     // …and the globe rises out of them as they do, growing as it goes
   zoom:     [295, 381],     // then you step inside: one card fills the screen, its neighbours curve away
   browse:   [381, 589],     // scrolling on walks down the globe row by row (BROWSE)…
-  unzoom:   [589, 645],     // …then you step back out, and the whole globe floats again
-  shrink:   [645, 705]      // and the page becomes a file: the screen shrinks into a sheet and goes into the Work
+  unzoom:   [589, 640],     // …then you step back out, and the whole globe floats again (a moment's rest: the
+                            // real page, ready to use — it's never a picture of it you're left looking at)
+  shrink:   [648, 705]      // and the page becomes a file: the screen shrinks into a sheet and goes into the Work
                             // folder, the folders rising round it (FILES); then Behind the scenes comes up out of its own
 };
 export const STORY_VH = 705;
 
-/* Speed zones: over these stretches the scroll itself goes no faster than this many vh a second,
-   however hard you scroll, once an ordinary scroll's worth (burst, in screens) is used up — so a
-   hard flick plays the moment at a pace you can follow, the animation in step with the scroll.
-   [from vh, to vh, vh a second, burst] (js/scroll.js) */
+/* Speed zones: over these stretches the page moves no faster than this many vh a second, however
+   hard you scroll — a gentle scroll or a hard one, on the way in or the way back — so every moment
+   plays at a pace you can follow, the animation in step with the scroll. `carry` is how far (in
+   screens) a scroll there can run ahead of the page: how far it keeps going at that speed after one
+   turn of the wheel. Stop scrolling and it eases to a stop within a moment. `whole`: never left half
+   done — once you've scrolled into it, it carries on to its end (the way you're going, at that same
+   speed) and comes to rest just past it, so the globe is never left half risen, half zoomed, or half
+   in its folder — looking ready when it isn't.
+   [from vh, to vh, vh a second, carry, whole] (js/scroll.js) */
 const PACE = [
-  [0, 95, 62, 0.75],        // the notes gather and the dot falls into the hands
-  [95, 267, 135, 1.0],      // the hands part and the globe rises
-  [295, 381, 86, 0.85],     // stepping inside the globe
-  [589, 705, 60, 0.5]       // stepping back out, and the page closing into its folder
+  [0, 95, 62, 0.3],         // the notes gather and the dot falls into the hands
+  [95, 267, 150, 0.45, true],   // the hands part and the globe rises — all the way, or back into the hands
+  [267, 295, 100, 0.4],     // it floats free (so a hard scroll doesn't lurch between the two)
+  [295, 381, 86, 0.4, true],    // stepping inside the globe — all the way in to a card, or back out
+  [589, 640, 70, 0.3, true],    // stepping back out — all the way out, or back in to the last row
+  [640, 648, 60, 0.3],      // floating again, for a moment
+  [648, 705, 60, 0.3, true]     // the page closing into its folder — all the way in, or back out to the page
 ];
 export const SCROLL = {                                   // the same, as fractions of the story (0 → 1)
   ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [a / STORY_VH, b / STORY_VH]])),
   spin: 7.2,                // radians the globe turns while it rises
-  pace: PACE.map(([a, b, v, burst]) => [a / STORY_VH, b / STORY_VH, v, burst])
+  pace: PACE.map(([a, b, ...rest]) => [a / STORY_VH, b / STORY_VH, ...rest])
 };
 
 /* Inside the globe, scrolling walks through these rows, top to bottom
@@ -169,7 +178,7 @@ export const FILES = {
   cue: 'Keep scrolling to open',
   stepVh: 30,                        // scrolling from one folder to the next (Work → Behind the scenes), in vh
   openVh: 55,                        // scrolling to open Behind the scenes into the page, in vh
-  pace: [36, 0.08]                   // through those two: a speed zone (vh a second, burst in screens — see STORY's)
+  pace: [36, 0.25]                   // through those two: a speed zone (vh a second, carry in screens — see STORY's)
 };
 
 /* The hands. Colours are taken from real skin: backs darker, palms lighter. */

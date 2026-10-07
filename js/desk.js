@@ -13,6 +13,7 @@ import { createTyping } from './typing.js';
 import { createMusic } from './music.js';
 import { createGithub } from './github.js';
 import { createCoding } from './coding.js';
+import { scrub } from './reveal.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const rich = s => esc(s).replace(/\*(.+?)\*/g, '<em>$1</em>');
@@ -59,11 +60,9 @@ export function createDesk({ desk, reduced }) {
   tools.addEventListener('pointerover', e => { const s = e.target.closest('li span'); if (s) circle(s, true); });
   tools.addEventListener('pointerout', e => { const s = e.target.closest('li span'); if (s) circle(s, false); });
 
-  // each panel rises in the first time it comes into view
-  const io = new IntersectionObserver(entries => {
-    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); }
-  }, { threshold: 0.15 });
-  page.querySelectorAll('.panel').forEach((p, i) => { p.style.setProperty('--i', i); io.observe(p); });
+  // each panel rises into place as it comes up the screen, its charts filling in with it (style.css) — with
+  // the scroll, both ways, never by itself
+  if (!reduced) scrub([...page.querySelectorAll('.panel')], '--in', 1, 0.35);
 
   /* ---------- drawing the pen ---------- */
   let running = false, last = 0;

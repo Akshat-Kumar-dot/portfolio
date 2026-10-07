@@ -1,20 +1,44 @@
 /* ============================================================
    REVEAL — About and Contact come into place as you scroll to
-   them, the way extrafazant.nl's text does: once a section is 15%
-   up from the bottom of the screen its rule draws across, the big
-   words rise into view one after another, the small type fades up.
-   Nothing moves for visitors who ask for reduced motion.
+   them, the way extrafazant.nl's text does: as a section comes up
+   the screen its rule draws across, the big words rise into view
+   one after another, the small type fades up. It follows the scroll,
+   both ways — nothing plays by itself: stop scrolling and it stops
+   where it is. (scrub() does the same for Behind the scenes' panels:
+   js/desk.js.) Nothing moves for visitors who ask for reduced motion.
    ============================================================ */
+import { onScroll } from './scroll.js';
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/* each word in its own window, so it can rise from below the line */
-function words(el, delay) {
+/* how far into view each element has come — 0 with its top `from` of the way down the screen, 1 once
+   it's a further `span` of a screen up — kept in the CSS variable `name`, as the page scrolls */
+export function scrub(els, name, from, span) {
+  const last = new Map();
+  function set() {
+    const H = innerHeight;
+    const tops = els.map(el => el.getBoundingClientRect().top);   // all measured, then all set: one layout
+    els.forEach((el, k) => {
+      const v = Math.min(1, Math.max(0, (H * from - tops[k]) / (H * span)));
+      if (Math.abs(v - (last.get(el) ?? -1)) < 0.002) return;
+      last.set(el, v);
+      el.style.setProperty(name, v.toFixed(3));
+    });
+  }
+  onScroll(set);
+  addEventListener('resize', set);
+  set();
+  return set;
+}
+
+/* each word in its own window, so it can rise from below the line; `at`: where in the section's
+   progress it starts, so they come up one after another */
+function words(el, at) {
+  const parts = el.textContent.split(/(\s+)/), n = Math.max(1, parts.filter(w => w && !/^\s+$/.test(w)).length - 1);
   let i = 0;
-  el.innerHTML = el.textContent.split(/(\s+)/).map(w => /^\s+$/.test(w) || !w ? w
-    : `<span class="w"><span style="--i:${i++}">${esc(w)}</span></span>`).join('');
+  el.innerHTML = parts.map(w => /^\s+$/.test(w) || !w ? w
+    : `<span class="w"><span style="--at:${(at + 0.6 * i++ / n).toFixed(3)}">${esc(w)}</span></span>`).join('');
   el.classList.add('split');
-  el.style.setProperty('--d', delay + 's');
 }
 
 export function createReveals({ reduced = false } = {}) {
@@ -25,11 +49,8 @@ export function createReveals({ reduced = false } = {}) {
     s.querySelectorAll('.sec-lead, .mail').forEach(el => words(el, 0.12));
     s.querySelectorAll('.sec-label, .sec-kicker, .socials, .foot').forEach((el, k) => {
       el.classList.add('fade-up');
-      el.style.setProperty('--d', (0.05 + k * 0.1) + 's');
+      el.style.setProperty('--at', (0.05 + k * 0.12).toFixed(2));
     });
   }
-  const io = new IntersectionObserver(entries => {
-    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('shown'); io.unobserve(e.target); }
-  }, { rootMargin: '0px 0px -15% 0px' });
-  sections.forEach(s => io.observe(s));
+  scrub(sections, '--r', 0.92, 0.55);
 }
