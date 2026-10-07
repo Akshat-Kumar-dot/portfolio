@@ -195,6 +195,7 @@ export function createGraph({ frame, canvas, pill, dot = 8 }, url = 'assets/grap
     for (const p of pulses) {
       const u = Math.min(1, (t - p.t0) / p.dur), e = u * u * (3 - 2 * u), tail = Math.max(0, e - 0.45);
       const ax = p.from.dx, ay = p.from.dy, bx = p.to.dx, by = p.to.dy;
+      if (!Number.isFinite(ax + ay + bx + by + e)) continue;  // a page with no size yet: nowhere to draw it
       const g = ctx.createLinearGradient(ax + (bx - ax) * tail, ay + (by - ay) * tail, ax + (bx - ax) * e, ay + (by - ay) * e);
       g.addColorStop(0, `rgba(${INK},0)`); g.addColorStop(1, `rgba(${INK},${hover ? 0.25 : 0.75})`);
       ctx.strokeStyle = g; ctx.lineWidth = 1.8 / k;

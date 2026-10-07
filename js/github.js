@@ -19,7 +19,7 @@ const iso = d => d.toISOString().slice(0, 10);
 export async function createGithub(el, { user, tip }) {
   el.innerHTML = `
     <p class="panel-label"><b>A</b> GitHub <span class="gh-side"><span class="gh-key"></span><span class="gh-who"></span></span></p>
-    <div class="gh-map"></div>
+    <div class="gh-map" data-lenis-prevent-touch></div>
     <div class="gh-stats"></div>
     <div class="gh-recent"></div>`;
   const who = el.querySelector('.gh-who');

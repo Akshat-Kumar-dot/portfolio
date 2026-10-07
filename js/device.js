@@ -13,12 +13,12 @@
    ============================================================ */
 const forced = new URLSearchParams(location.search).get('tier');
 // a phone or tablet: says so, or touch is its only way in (a touch-screen laptop still has its trackpad)
-const handheld = (navigator.userAgentData?.mobile ?? /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent))
+export const HANDHELD = (navigator.userAgentData?.mobile ?? /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent))
   || (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches);
 const memory = navigator.deviceMemory || 8, cores = navigator.hardwareConcurrency || 8;
 
 export const TIER = ['full', 'phone', 'low'].includes(forced) ? forced
-  : !handheld ? (memory <= 2 ? 'low' : 'full')
+  : !HANDHELD ? (memory <= 2 ? 'low' : 'full')
   : memory <= 4 || cores <= 4 ? 'low' : 'phone';
 
 export const PERF = {

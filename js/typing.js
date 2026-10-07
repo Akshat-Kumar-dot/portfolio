@@ -17,6 +17,7 @@ const TEXTS = [
 ];
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TAP = matchMedia('(hover: hover) and (pointer: fine)').matches ? 'Click here' : 'Tap here';   // a phone's finger, a computer's mouse
 
 /* onResult(el): called with the visitor's score once they finish, so the page can circle it */
 export function createTyping(el, { wpm, accuracy, test, onResult }) {
@@ -30,7 +31,7 @@ export function createTyping(el, { wpm, accuracy, test, onResult }) {
       <p class="ty-text" aria-hidden="true"></p>
       <input class="ty-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
              aria-label="Type the sentence shown to race my typing speed">
-      <p class="ty-hint">Click here and start typing — race me</p>
+      <p class="ty-hint">${TAP} and start typing — race me</p>
     </div>
     <div class="ty-bar">
       <p class="ty-live"><b class="ty-wpm">0</b> wpm · <b class="ty-acc">100</b>% · <b class="ty-time">0.0</b> s</p>
@@ -54,7 +55,7 @@ export function createTyping(el, { wpm, accuracy, test, onResult }) {
     result.innerHTML = ''; el.classList.remove('finished');
     clearInterval(timer);
     show(0, 100, 0);
-    hint.textContent = 'Click here and start typing — race me';
+    hint.textContent = TAP + ' and start typing — race me';
   }
 
   const correct = () => { let c = 0; for (let i = 0; i < typed.length; i++) if (typed[i] === target[i]) c++; return c; };

@@ -9,6 +9,7 @@
    ============================================================ */
 import { TAU, pad, rng } from './utils.js';
 import { PERF } from './device.js';
+import { SIGN } from './mark.js';
 
 export const COVER_W = 1024, COVER_H = 640;
 const SERIF = '"Instrument Serif", Georgia, serif';
@@ -260,6 +261,12 @@ export function drawCover(item, index, total, onReady) {
   x.fillStyle = alpha(C0.wink, 0.25);
   for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(WX + 22 + i * 16, WY + 18, 5, 0, TAU); x.fill(); }
   x.fillStyle = alpha(C0.wink, 0.07); rr(x, WX + WW / 2 - 110, WY + 9, 220, 18, 9); x.fill();
+  // whose card it is, where the address goes in the window's bar
+  x.save();
+  if ('letterSpacing' in x) x.letterSpacing = '1.5px';
+  x.font = `500 10.5px ${MONO}`; x.fillStyle = alpha(C0.wink, 0.5); x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(SIGN.toUpperCase(), WX + WW / 2, WY + 18.5);
+  x.restore();
   const inner = { X: WX, Y: WY + 36, W: WW, H: WH - 36 };
   let media = inner;                                           // where a screenshot goes
   if (item.video) {

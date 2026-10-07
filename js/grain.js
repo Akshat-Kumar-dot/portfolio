@@ -1,5 +1,5 @@
-/* Paper grain: one 160px noise tile, painted once and repeated. */
-export function paintGrain(el) {
+/* Paper grain: one 160px noise tile, painted once and repeated — with any `layers` (CSS images) over it */
+export function paintGrain(el, layers = []) {
   if (!el) return;
   const S = 160, c = document.createElement('canvas');
   c.width = c.height = S;
@@ -10,5 +10,5 @@ export function paintGrain(el) {
     d.data[i + 3] = Math.random() * 38 | 0;
   }
   g.putImageData(d, 0, 0);
-  el.style.backgroundImage = 'url(' + c.toDataURL() + ')';
+  el.style.backgroundImage = [...layers, 'url(' + c.toDataURL() + ')'].join(', ');
 }

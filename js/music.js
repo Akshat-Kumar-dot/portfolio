@@ -40,7 +40,7 @@ export function createMusic(el, { tracks = [], onChange, reduced = false }) {
       <div class="mu-info">
         <p class="mu-title"></p>
         <p class="mu-artist"></p>
-        <div class="mu-seek" role="slider" tabindex="0" aria-label="Position in the song" aria-valuemin="0" aria-valuemax="100"><i></i><b></b></div>
+        <div class="mu-seek" data-lenis-prevent role="slider" tabindex="0" aria-label="Position in the song" aria-valuemin="0" aria-valuemax="100"><i></i><b></b></div>
         <p class="mu-time"><span class="mu-cur">0:00</span><span class="mu-dur">0:00</span></p>
         <div class="mu-ctrl">
           <button type="button" class="mu-prev" aria-label="Previous song">${ICON.prev}</button>

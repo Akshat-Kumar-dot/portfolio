@@ -12,16 +12,20 @@
         its neighbours curve away at the edges; scrolling on walks
         down the globe row by row (and back up), sideways swipes, drag
         and ← → move along a row. Point at the card and a pen circles it.
-   Past the track come the site's sections as a stack of folders
-   (js/files.js): scroll through them to Behind the scenes (js/desk.js),
-   whose sheet opens out into the page; About and Contact follow it.
+        Any time it's out, you can turn it and zoom it as you like, as on
+        Google Earth: drag, pinch, ctrl + scroll, or the controls (bottom right).
+     5. past the last row you step back out, and the page you've been on
+        becomes a file: the whole screen turns into a sheet and shrinks down
+        into the Work folder, the site's sections rising round it as a stack
+        of folders (js/files.js). Then Behind the scenes (js/desk.js) comes up
+        out of its folder and opens into the page; About and Contact follow it.
    Everything follows the scroll — nothing holds on to it.
    Add ?p=0.4 to the URL to pin the progress while tuning.
    ============================================================ */
 import * as THREE from 'three';
 import { SITE, WORK, GLOBE, SCROLL, STORY_VH, BROWSE, ZOOM, FILES, DESK } from './config.js';
 import { $, clamp, lerp, sm, eio, pad, prefersReducedMotion, hasFinePointer } from './utils.js';
-import { paintGrain } from './grain.js';
+import { createMark } from './mark.js';
 import { coverFontsReady, drawCover, COVER_W, COVER_H } from './covers.js';
 import { createStage } from './stage.js';
 import { createHands } from './hands.js';
@@ -29,7 +33,7 @@ import { createGlobe } from './globe.js';
 import { createGraph } from './graph.js';
 import { createFiles, graphSketch } from './files.js';
 import { createDesk } from './desk.js';
-import { initSmoothScroll, jumpTo, glideTo } from './scroll.js';
+import { initSmoothScroll, jumpTo, glideTo, slowIn } from './scroll.js';
 import { createReveals } from './reveal.js';
 import * as pen from './scribble.js';
 import { PERF } from './device.js';
@@ -48,8 +52,11 @@ const reduced = prefersReducedMotion(), fine = hasFinePointer();
 const canvas = $('scene'), track = $('track'), hint = $('hint'), guide = $('guide'), pill = $('pill'), hero = $('hero');
 const readout = $('readout'), roIdx = $('roIdx'), roTitle = $('roTitle'), roMeta = $('roMeta');
 const inkCanvas = $('ink'), inkCtx = inkCanvas.getContext('2d');
-paintGrain($('grain'));
+createMark($('grain'));                                     // the paper, its grain, and whose site this is (js/mark.js)
 track.style.height = (STORY_VH + 100) + 'vh';               // the story's length, plus the screen it's seen through
+// the folders' section starts where the globe's page closes into its folder, so their stage is there to take it
+const SHRINK_VH = SCROLL.shrink[0] * STORY_VH;
+$('files').style.marginTop = -(STORY_VH - SHRINK_VH + 100) + 'vh';
 
 /* ---------- page text, from SITE in config.js ---------- */
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -118,8 +125,10 @@ scene.add(dot);
 
 let notesPx = { x: -999, y: -999 }, lastFold = -1;
 function measureNotes() {                                    // the centre of the graph, where its notes gather
-  const r = notesEl.getBoundingClientRect();
-  notesPx = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  // against the stage, not the window: the stage is the screen whenever the dot is falling, but the page may
+  // be scrolled anywhere when this is measured (a reload lands you back where you were)
+  const r = notesEl.getBoundingClientRect(), st = $('stage').getBoundingClientRect();
+  notesPx = { x: r.left - st.left + r.width / 2, y: r.top - st.top + r.height / 2 };
 }
 measureNotes();
 
@@ -136,8 +145,10 @@ function foldNotes(c) {
 createDesk({ desk: DESK, reduced });
 const workThumbs = Object.assign(document.createElement('div'), { className: 'f-thumbs' });
 const firstSentence = s => (String(s).match(/^.*?[.!?](?=\s|$)/) || [s])[0];
-createFiles({
-  cue: FILES.cue, stepVh: FILES.stepVh, openVh: FILES.openVh, reduced, target: 2,
+const story = { p: 0 };                                     // the globe's progress (set each frame), for the folders
+const files = createFiles({
+  cue: FILES.cue, stepVh: FILES.stepVh, openVh: FILES.openVh, reduced, target: 2, holder: 1,
+  closeVh: (SCROLL.shrink[1] - SCROLL.shrink[0]) * STORY_VH, story, closeAt: SCROLL.shrink,
   folders: [
     { n: '01', name: 'Notes', line: FILES.notes, media: graphSketch() },
     { n: '02', name: 'Work', line: [WORK.length + ' projects', SPAN].filter(Boolean).join('  ·  '), media: workThumbs },
@@ -162,11 +173,12 @@ if (/^#(desk|about|contact)$/.test(location.hash)) requestAnimationFrame(() => j
 function zoomDistance(R) {
   const t = Math.tan(camera.fov * Math.PI / 360);
   const cw = GLOBE.cardWidth * R, ch = cw * COVER_H / COVER_W;
-  return Math.max(ch / (ZOOM.height * 2 * t), cw / (ZOOM.width * 2 * t * camera.aspect));
+  const wide = camera.aspect < 0.8 ? 0.86 : ZOOM.width;     // on a phone the card takes most of the width, to be readable
+  return Math.max(ch / (ZOOM.height * 2 * t), cw / (wide * 2 * t * camera.aspect));
 }
 
 /* ---------- the readout (top-left: Projects, or the card you're on) and the guide line (bottom-centre) ---------- */
-let mode = 'rising';                                        // rising → free → zooming → focus
+let mode = 'rising';                                        // rising → free → zooming → focus (→ zooming → free) → packing
 const idx = v => '<b>' + v + '</b><span>/</span><span>' + pad(WORK.length) + '</span>';
 function swap() { readout.classList.remove('swap'); void readout.offsetWidth; readout.classList.add('swap'); }
 function showDefault() {
@@ -188,8 +200,8 @@ showDefault();
 
 /* the line at the foot of the screen */
 const GUIDE = {
-  free: 'Scroll to step inside ↓',
-  focus: fine ? 'Scroll up and down the globe · drag or ← → along it' : 'Scroll up and down the globe · swipe sideways along it'
+  free: fine ? 'Scroll to step inside ↓ · pinch or ctrl + scroll to zoom' : 'Scroll to step inside ↓ · pinch to zoom',
+  focus: fine ? 'Scroll up and down the globe · drag to look around · pinch to zoom' : 'Scroll up and down the globe · swipe along it · pinch to zoom'
 };
 let guideKey = '';
 function setGuide(m) {
@@ -208,29 +220,99 @@ const interactive = () => mode === 'free' || mode === 'focus';
 addEventListener('pointermove', e => {
   mouse.set(e.clientX / W * 2 - 1, -(e.clientY / H) * 2 + 1);
   if (e.pointerType === 'mouse') pill.style.translate = (e.clientX + 18) + 'px ' + (e.clientY + 18) + 'px';
+  if (touches.has(e.pointerId)) { touches.set(e.pointerId, [e.clientX, e.clientY]); if (pinch) pinchMove(); }
   if (!dragging || !globe) return;
   const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
   moved += Math.abs(dx) + Math.abs(dy);
   if (moved > 6) {
     if (!canvas.hasPointerCapture(e.pointerId)) canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('drag');
-    globe.drag(dx, mode === 'focus' ? 0 : dy);               // inside, a drag moves along the row; up and down is the scroll's
+    // inside, a finger's drag moves along the row (up and down is the page's scroll); a mouse looks around freely
+    globe.drag(dx, mode === 'focus' && e.pointerType !== 'mouse' ? 0 : dy);
   }
 }, { passive: true });
 canvas.addEventListener('pointerdown', e => {
   if (!interactive() || e.button !== 0) return;
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (touches.size === 2) { if (dragging) { dragging = false; canvas.classList.remove('drag'); globe.release(); } pinchStart(); return; }
+  }
   dragging = true; moved = 0; lx = e.clientX; ly = e.clientY;
 });
-addEventListener('pointerup', () => {
+const lift1 = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+addEventListener('pointercancel', lift1);
+addEventListener('pointerup', e => {
+  lift1(e);
   if (!dragging) return;
   dragging = false; canvas.classList.remove('drag');
-  if (moved > 6) { globe.release(); return; }
+  if (moved > 6) { globe.release(); keepRow(); return; }
   if (!hovered) return;
   if (mode === 'focus' && hovered !== globe.focus) { globe.focusCard(hovered); return; }   // an edge card: bring it to the centre
   const url = WORK[hovered.k].url;
   if (url && url !== '#') open(url, /^https?:/.test(url) ? '_blank' : '_self', 'noopener');
 });
 canvas.addEventListener('pointerleave', () => mouse.set(9, 9));
+
+/* ---------- zoom and turn it yourself, as on Google Earth ----------
+   pinch (two fingers on a phone, or a trackpad — which the browser sends as ctrl + scroll),
+   ctrl + scroll on a mouse, + and − on the keyboard, and the controls at the bottom right:
+   a pan pad (turn it; inside the globe, a card at a time), a reset in its middle, and zoom */
+const touches = new Map();
+let pinch = null;
+const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+function pinchStart() { pinch = { d: Math.max(1, spread()), uz: uzT }; }
+function pinchMove() { uzT = pinch.uz; zoomBy(Math.log(spread() / pinch.d) * 1.3); }
+
+addEventListener('wheel', e => {
+  if (!e.ctrlKey || !interactive() || !globe || !stageInView()) return;
+  e.preventDefault();                                       // not the browser's own page zoom
+  zoomBy(-e.deltaY * (e.deltaMode ? 0.06 : 0.0045));
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  if (!interactive() || !globe || !stageInView() || e.target.closest?.('input, textarea, [contenteditable]')) return;
+  const zk = { '+': 1, '=': 1, '-': -1, '_': -1 }[e.key];
+  if (zk) { e.preventDefault(); zoomBy(zk * 0.25); return; }
+  const side = { ArrowLeft: -1, ArrowRight: 1 }[e.key];      // floating free, ← → turn it (↑ ↓ still scroll the page)
+  if (side && mode === 'free') { e.preventDefault(); turnQ.x -= side * 0.35; }
+});
+
+const icon = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+const earth = Object.assign(document.createElement('div'), { className: 'earth' });
+earth.setAttribute('role', 'group');
+earth.setAttribute('aria-label', 'Globe controls');
+earth.innerHTML = `
+  <div class="e-pad">
+    <button class="e-n" data-pan="0,1" aria-label="Turn up" title="Turn up">${icon('M7 14.5l5-5 5 5')}</button>
+    <button class="e-w" data-pan="-1,0" aria-label="Turn left" title="Turn left">${icon('M14.5 7l-5 5 5 5')}</button>
+    <button class="e-home" data-home="" aria-label="Reset the view" title="Reset the view">${icon('M12 4.5v3M12 16.5v3M4.5 12h3M16.5 12h3M12 9.6a2.4 2.4 0 1 0 0 4.8a2.4 2.4 0 1 0 0-4.8')}</button>
+    <button class="e-e" data-pan="1,0" aria-label="Turn right" title="Turn right">${icon('M9.5 7l5 5-5 5')}</button>
+    <button class="e-s" data-pan="0,-1" aria-label="Turn down" title="Turn down">${icon('M7 9.5l5 5 5-5')}</button>
+  </div>
+  <div class="e-zoom">
+    <button data-zoom="1" aria-label="Zoom in" title="Zoom in">${icon('M12 6.5v11M6.5 12h11')}</button>
+    <button data-zoom="-1" aria-label="Zoom out" title="Zoom out">${icon('M6.5 12h11')}</button>
+  </div>`;
+// only where there's a mouse or a trackpad; on a phone, pinch and swipe do it, and the screen stays clear
+if (matchMedia('(any-pointer: fine)').matches) $('stage').append(earth);
+/* one step at once; held down, it keeps going */
+function press(b) {
+  if (b.dataset.home !== undefined) { uzT = 0; turnQ.x = turnQ.y = 0; globe?.home(); return; }
+  if (b.dataset.zoom) { const d = +b.dataset.zoom; zoomBy(d * 0.22); return { zoom: d, from: performance.now() + 280 }; }
+  const v = b.dataset.pan.split(',').map(Number);
+  if (mode === 'focus') { stepView(v); heldNext = performance.now() + 460; }
+  else { turnQ.x -= v[0] * 0.3; turnQ.y += v[1] * 0.22; }
+  return { pan: v, from: performance.now() + 280 };
+}
+earth.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button');
+  if (!b || !globe) return;
+  e.preventDefault();
+  try { b.setPointerCapture(e.pointerId); } catch { /* already let go */ }
+  held = press(b) || null;
+});
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) earth.addEventListener(ev, () => { held = null; });
+earth.addEventListener('click', e => { const b = e.target.closest('button'); if (b && e.detail === 0 && globe) press(b); });   // from the keyboard
 
 const stageInView = () => scrollY < track.offsetTop + track.offsetHeight - innerHeight * 0.5;
 
@@ -243,6 +325,16 @@ const ROWS = BROWSE.from - BROWSE.to + 1;
 const rowY = row => (SCROLL.browse[0] + (BROWSE.from - row + 0.5) / ROWS * (SCROLL.browse[1] - SCROLL.browse[0])) * (track.offsetHeight - innerHeight);
 let bandRow = null;                                         // the row the scroll position has walked to
 
+/* you've turned to another row yourself (a drag, the pan control): the scroll comes along to that
+   row's stretch, so scrolling on carries on from where you are rather than swinging you back */
+function keepRow() {
+  if (mode !== 'focus' || !globe?.focus) return;
+  const row = clamp(globe.focus.row, BROWSE.to, BROWSE.from);
+  if (row === bandRow) return;
+  bandRow = row;
+  jumpTo(rowY(row));
+}
+
 addEventListener('keydown', e => {
   if (mode !== 'focus' || !globe || !stageInView()) return;
   const along = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
@@ -251,7 +343,7 @@ addEventListener('keydown', e => {
   if (!up || bandRow === null) return;
   e.preventDefault();
   const row = bandRow + up;
-  glideTo(row > BROWSE.from ? FREE_Y() : row < BROWSE.to ? track.offsetTop + track.offsetHeight : rowY(row));
+  glideTo(row > BROWSE.from ? FREE_Y() : row < BROWSE.to ? track.offsetTop + track.offsetHeight - innerHeight : rowY(row));
 });
 
 /* a sideways swipe moves one card along the row. Telling one swipe from the next: a trackpad
@@ -341,17 +433,11 @@ function scrollTarget() {
   return max > 0 ? clamp(scrollY / max, 0, 1) : 1;
 }
 
-/* the dot's fall, the globe rising and the zoom keep to a pace you can follow, however hard
-   the scroll (SCROLL.pace): inside one of those stretches p moves no faster than its pace,
-   and a step that would leap into one stops at its edge, to go on at that pace from there */
-function paced(q, step, dt) {
-  for (const [a, b, v] of SCROLL.pace) {
-    if (step > 0 ? q >= a && q < b : q > a && q <= b) step = clamp(step, -v * dt, v * dt);
-    else if (step > 0 && q < a && q + step > a) step = a - q;
-    else if (step < 0 && q > b && q + step < b) step = b - q;
-  }
-  return step;
-}
+/* the story's speed zones (SCROLL.pace, and the folders' FILES.pace): over those stretches the scroll itself
+   is held to a pace you can follow, however hard you scroll (js/scroll.js) — everything still just follows it */
+const storyPx = f => f * (track.offsetHeight - innerHeight);
+for (const [a, b, v, burst] of SCROLL.pace) slowIn(() => [storyPx(a), storyPx(b)], v, burst);
+slowIn(() => [storyPx(1), $('deskSlot').offsetTop], ...FILES.pace);
 
 /* ---------- keeping it smooth on a phone ----------
    (Phones only — PERF.adapt. A computer always draws at full quality.)
@@ -392,24 +478,90 @@ const _at = new THREE.Vector3(), _close = new THREE.Vector3(), _ray = new THREE.
 let p = scrollTarget(), pPrev = p, last = performance.now(), lastFocus = null, readoutAway = true;
 let videoK = -1;                                            // the project whose video is playing, if any
 
+/* ---------- your own zoom, and the pan control (Google Earth-like) ----------
+   uz: how far you've zoomed in (+) or out (−) from where the scroll has the camera, in the same
+   units as the scroll's zoom (1 = from floating free to one card filling the screen) */
+const Z_MIN = -0.5, Z_MAX = 1.45;
+let uz = 0, uzT = 0, uzW = 0, held = null, heldNext = 0;
+const turnQ = { x: 0, y: 0 };                               // turning still to do, eased out over the next frames
+const zoomBy = d => { const zNow = mode === 'focus' ? 1 : 0; uzT = clamp(uzT + d, Z_MIN - zNow, Z_MAX - zNow); };
+
+/* a pan or zoom button held down; a tap does one step */
+function steer(dt, now) {
+  const going = held && now >= held.from;
+  if (going && held.zoom) zoomBy(held.zoom * 1.1 * dt);
+  if (going && held.pan && mode === 'free') { turnQ.x -= held.pan[0] * 1.4 * dt; turnQ.y += held.pan[1] * 1.0 * dt; }
+  if (held?.pan && mode === 'focus' && now >= heldNext) { heldNext = now + 420; stepView(held.pan); }
+  if (globe && mode === 'free' && (turnQ.x || turnQ.y)) {
+    const k = 1 - Math.exp(-dt * 9), ax = turnQ.x * k, ay = turnQ.y * k;
+    globe.turn(ax, ay); turnQ.x -= ax; turnQ.y -= ay;
+    if (Math.abs(turnQ.x) + Math.abs(turnQ.y) < 1e-4) turnQ.x = turnQ.y = 0;
+  } else if (mode !== 'free') turnQ.x = turnQ.y = 0;
+}
+/* inside the globe the pan control moves a card at a time: along the row, or to the row above or below */
+function stepView([ax, ay]) {
+  if (!globe?.focus) return;
+  if (ax) { globe.stepFocus(ax, 0); return; }
+  const row = clamp((bandRow ?? globe.focus.row) + ay, BROWSE.to, BROWSE.from);
+  if (row !== bandRow) glideTo(rowY(row));
+}
+
+/* the globe's page, as it becomes a file: the 3D drawn just as it is the moment you're done with the
+   globe — the floating view, the hands open beneath it — into a full-screen picture that the Work folder's
+   sheet carries over a copy of the paper (files.js). From then on the real page is hidden and the globe
+   held still, so scrolling back up it takes over again exactly where the picture leaves off */
+let snapped = false;
+const stageEl = $('stage');
+function snapPage(time) {
+  if (!files.shot || !renderer.domElement.width || !renderer.domElement.height) return;   // no picture to take yet
+  snapped = true;
+  const cup = hands.update(time, 1, 1, 1, handsBelow, handsEdge);   // open, settled, in place
+  hands.pair.visible = true; dot.visible = false; globe.group.visible = true;
+  stage.inner.position.copy(cup); stage.inner.intensity = 0;
+  camera.position.copy(CAM_POS); camera.lookAt(CAM_AT); camera.updateMatrixWorld();
+  globe.group.position.copy(GLOBE_AT); globe.group.scale.setScalar(GLOBE.radius); globe.group.lookAt(CAM_POS);
+  globe.group.updateMatrixWorld(true);
+  const d = camera.position.distanceTo(GLOBE_AT);
+  scene.fog.near = d - GLOBE.radius * 0.2; scene.fog.far = d + GLOBE.radius * 5.5;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.render(scene, camera);
+  const out = files.shot.canvas, src = renderer.domElement;
+  out.width = src.width; out.height = src.height;
+  out.getContext('2d').drawImage(src, 0, 0);
+  const c = GLOBE_AT.clone().project(camera);
+  files.shot.ready((1 - c.y) / 2 * H);                      // where the globe is on the page, to keep it in sight in the folder
+}
+addEventListener('resize', () => { snapped = false; });
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
   const time = now / 1000;
-  if (scrollY >= track.offsetTop + track.offsetHeight - 1) {                // the globe is scrolled out of view: nothing to draw
+  const target = scrollTarget();
+  p = target;                                                             // exactly where the scroll is: the smooth scroll is the only easing
+  story.p = p;
+  // (the story's progress first: however far past the globe the scroll is, the folders follow it to the end)
+  if (scrollY >= track.offsetTop + track.offsetHeight - 1 && p > SCROLL.shrink[0]) {    // scrolled out of view and handed over: nothing to draw
     if (hovered) setHovered(null);
     videoK = -1; globe?.setPlaying(-1);
+    if (globe && !snapped) { snapPage(time); renderer.clear(); }          // …but the folder still needs its picture of the page
+    stageEl.style.visibility = 'hidden';
     return;
   }
 
-  const target = scrollTarget();
-  let step = (target - p) * (1 - Math.exp(-dt * (reduced ? 30 : 16)));   // a touch of easing on top of the smooth scroll
-  if (!reduced) step = paced(p, step, dt);
-  p += step;
-  if (Math.abs(target - p) < 2e-4) p = target;                            // …but it does arrive (e.g. back at exactly 0)
   const dp = p - pPrev; pPrev = p;
+  // stepping back out, and the page going into its folder, follow the scroll itself, so they line up exactly
+  // with the folders (which follow it too); the picture of the page takes over the moment it starts to close
+  // (both follow p, at the story's pace, as the folders do — so however fast you scroll, the page is handed
+  // over to them, and they close it, in step)
+  const unzoom = eio(sm(SCROLL.unzoom, p)), handed = !Number.isFinite(FORCE_P) && p > SCROLL.shrink[0];   // (the folders' own test is the exact opposite)
+  // and until it is handed over, the globe's page stays on the screen even if the scroll has run on past it
+  stageEl.classList.toggle('pinned', !handed && scrollY > track.offsetTop + track.offsetHeight - innerHeight);
   const enter = eio(sm(SCROLL.enter, p)), open = sm(SCROLL.open, p), lift = sm(SCROLL.lift, p);
-  const zoom = eio(sm(SCROLL.zoom, p));
+  const zoom = eio(sm(SCROLL.zoom, p)) * (1 - unzoom);
+  if (globe && handed && !snapped) snapPage(time);          // a picture of the page, exactly as it is, goes into the folder
+  if (!handed) snapped = false;
+  stageEl.style.visibility = handed && snapped ? 'hidden' : '';
 
   // hands rise into view, part, and settle a touch once the globe has risen clear
   const cup = hands.update(time, open, sm([0.6, 1], lift), enter, handsBelow, handsEdge);
@@ -419,19 +571,26 @@ function frame(now) {
     // small enough to hide between the closed palms; grows steadily as it rises
     R = GLOBE.seed * Math.pow(GLOBE.radius / GLOBE.seed, lift);
     globe.group.position.lerpVectors(cup, GLOBE_AT, lift);
-    globe.group.position.y += Math.sin(Math.PI * lift) * 0.02 + Math.sin(time * 0.8) * 0.004 * lift * (1 - zoom);
+    globe.group.position.y += Math.sin(Math.PI * lift) * 0.02 + Math.sin(time * 0.8) * 0.004 * lift * (1 - zoom) * (1 - unzoom);
     globe.group.scale.setScalar(R);
-    globe.group.visible = lift > 0;                        // until it starts to rise it's hidden in the closed hands: don't draw it
     globe.group.lookAt(CAM_POS);                            // rows stay level with the page
+    globe.group.visible = lift > 0;                        // until it starts to rise it's hidden in the closed hands: don't draw it
   }
 
-  // camera: the fixed view, carried in toward the front card as you zoom
+  // camera: the fixed view, carried in toward the front card as you zoom — and your own zoom on top
+  // (z beyond 1 goes closer than the scroll does, below 0 further out than the floating view)
+  uzW += ((mode === 'free' || mode === 'focus' ? 1 : 0) - uzW) * (1 - Math.exp(-dt * 8));
+  uz += (uzT - uz) * (1 - Math.exp(-dt * 9));
+  const z = clamp(zoom + uz * uzW, Z_MIN, Z_MAX);
   camera.position.copy(CAM_POS);
   _at.copy(CAM_AT);
-  if (globe && zoom > 0) {
-    _close.copy(globe.group.position).addScaledVector(TO_CAM, R + zoomDistance(R));
-    camera.position.lerp(_close, zoom);
-    _at.lerp(globe.group.position, zoom);
+  if (globe && z > 0) {
+    const zd = zoomDistance(R) * (1 - 0.55 * sm([1, Z_MAX], z));
+    _close.copy(globe.group.position).addScaledVector(TO_CAM, R + zd);
+    camera.position.lerp(_close, Math.min(z, 1));
+    _at.lerp(globe.group.position, Math.min(z, 1));
+  } else if (globe && z < 0) {
+    camera.position.sub(globe.group.position).multiplyScalar(1 - z * 0.9).add(globe.group.position);
   }
   if (mode === 'free') { camera.position.x += mouse.x * 0.012 * (Math.abs(mouse.x) < 2); camera.position.y += mouse.y * 0.008 * (Math.abs(mouse.y) < 2); }
   if (DEBUG_CAM) { camera.position.copy(DEBUG_CAM.pos); _at.copy(DEBUG_CAM.at); }
@@ -465,8 +624,9 @@ function frame(now) {
     dot.visible = melt > 0.001;
   }
 
-  // the readout belongs to the work, not the landing or the zoomed-in view
-  const away = p < SCROLL.drop[1] || mode === 'zooming' || mode === 'focus';
+  // the readout belongs to the work, not the landing or the zoomed-in view — and it's back as you step out,
+  // so the page that goes into the folder carries its heading
+  const away = p < SCROLL.drop[1] || (mode === 'zooming' && unzoom < 0.3) || mode === 'focus' || mode === 'packing';
   if (away !== readoutAway) { readoutAway = away; readout.classList.toggle('away', away); }
 
   if (globe) {
@@ -475,26 +635,30 @@ function frame(now) {
     scene.fog.far = d + R * 5.5;
 
     // which phase are we in?
-    const next = lift < 0.985 ? 'rising' : zoom < 0.002 ? 'free' : zoom < 0.985 ? 'zooming' : 'focus';
+    // (stepping back out is 'zooming' all the way, so nothing floats in — no guide, no controls — before the page closes)
+    const next = lift < 0.985 ? 'rising' : handed ? 'packing' : zoom >= 0.985 ? 'focus' : zoom >= 0.002 || unzoom > 0 ? 'zooming' : 'free';
     if (next !== mode) {
       mode = next;
       globe.setFocus(mode === 'zooming' || mode === 'focus');
-      if (mode !== 'free' && mode !== 'focus') setHovered(null);
+      if (mode !== 'free' && mode !== 'focus') { setHovered(null); uzT = 0; held = null; }   // your zoom is for the view you set it in
       if (mode === 'focus' && globe.focus) showProject(globe.focus.k); else if (!hovered) showDefault();
     }
     // inside, where you are in the scroll picks the row: scrolling on walks down the globe, scrolling
-    // back walks up it
+    // back walks up it (read from the scroll itself once you're in, so a row you've turned to stays put)
     if (mode === 'zooming' || mode === 'focus') {
-      const f = clamp((p - SCROLL.browse[0]) / (SCROLL.browse[1] - SCROLL.browse[0]), 0, 0.9999);
+      const f = clamp(((mode === 'focus' ? target : p) - SCROLL.browse[0]) / (SCROLL.browse[1] - SCROLL.browse[0]), 0, 0.9999);
       const row = BROWSE.from - Math.floor(f * ROWS);
       if (row !== bandRow) { bandRow = row; globe.aimRow(row); }
     } else bandRow = null;
     setGuide(mode === 'free' || (mode === 'focus' && stageInView()) ? mode : '');
+    earth.classList.toggle('on', (mode === 'free' || mode === 'focus') && stageInView());
+    steer(dt, now);
     if (interactive() && !dragging && fine) { ray.setFromCamera(mouse, camera); setHovered(stageInView() ? globe.pick(ray) : null); }
     if (mode === 'focus' && globe.focus !== lastFocus && !hovered) showProject(globe.focus.k);
     lastFocus = globe.focus;
 
     peek.set(Math.abs(mouse.x) < 2 ? mouse.x : 0, Math.abs(mouse.y) < 2 ? mouse.y : 0);
+    if (unzoom > 0) peek.set(0, 0);                         // stepping back out: no peeking, so it's just as the picture will have it
     // a project's video plays only once you've zoomed in and its card has come to rest in the middle;
     // it stops the moment you move on to another card or back out
     const k = mode === 'focus' && globe.focus && stageInView() ? globe.focus.k : -1;
@@ -503,7 +667,9 @@ function frame(now) {
       else if (k !== -1 && globe.settled) videoK = k;        // arrived: start, from the beginning
     }
     globe.setPlaying(videoK);
-    globe.update(dt, { scrollSpin: dp * SCROLL.spin * (1 - lift), hovered, dragging, idle: reduced ? 0 : 1, peek });
+    // floating free it turns slowly by itself — more slowly the closer you've zoomed in; packed away it's held still
+    globe.update(dt, { scrollSpin: dp * SCROLL.spin * (1 - lift), hovered, dragging, peek, frozen: handed,
+                       idle: reduced ? 0 : 1 - 0.85 * clamp(z, 0, 1) });
     stage.inner.position.copy(cup);
   }
 
@@ -515,7 +681,7 @@ function frame(now) {
   const handsSeen = inView(hands.pair, 0.01);
   hands.pair.visible = handsSeen;
   renderer.shadowMap.autoUpdate = handsSeen;                // only the hands take shadows
-  if (handsSeen || dot.visible || (globe && lift > 0.001)) {
+  if (!handed && (handsSeen || dot.visible || (globe && lift > 0.001))) {   // (once the page is in its folder, nothing to draw)
     renderer.render(scene, camera);
     blank = false;
     govern(dt, now);

@@ -30,12 +30,18 @@ a { color:inherit; }
    blend, so phones don't have to repaint the page as it scrolls */
 body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
                background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%); }
-.grain { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.45; }
+.grain { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.45; }   /* also carries the watermark (js/mark.js) */
+/* shown only when the site is served from somewhere other than SITE.url (js/mark.js) */
+.copy-notice { position:fixed !important; z-index:20 !important; left:50%; bottom:14px; transform:translateX(-50%); display:block !important;
+               max-width:calc(100% - 24px); padding:9px 14px; border-radius:8px; background:var(--ink); color:var(--bg-hi);
+               font:500 11px/1.4 var(--mono); letter-spacing:.06em; text-align:center; box-shadow:0 10px 24px -12px rgba(0,0,0,.5); }
+.copy-notice a { color:inherit; }
 
 /* The scroll track: the stage sticks while you scroll through it.
    Its height sets how long the whole sequence lasts.               */
 .track { position:relative; z-index:1; height:620vh; }   /* js/main.js sets it from the story's length */
 .stage { position:sticky; top:0; height:100vh; height:100svh; overflow:hidden; overflow:clip; }
+.stage.pinned { position:fixed; left:0; right:0; }            /* held on screen until the folders take its page (js/main.js) */
 
 #scene { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:pan-y; }
 /* the pen line circling the card in the middle once you're inside the globe (js/scribble.js) */
@@ -111,6 +117,24 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
 .guide.on { opacity:1; transform:translate(-50%, 0); }
 @media (max-width:760px) { .guide { white-space:normal; width:calc(100% - 32px); text-align:center; } }
 
+/* the globe's own controls, bottom right (js/main.js): a pan pad with a reset in its middle, and zoom */
+.earth { position:absolute; z-index:3; right:var(--gutter); bottom:30px; display:flex; flex-direction:column; align-items:center; gap:10px;
+         opacity:0; transform:translateY(6px); pointer-events:none; transition:opacity .4s ease, transform .4s ease; }
+.earth.on { opacity:1; transform:none; pointer-events:auto; }
+.earth button { all:unset; box-sizing:border-box; display:grid; place-items:center; cursor:pointer; color:var(--ink);
+                touch-action:manipulation; -webkit-tap-highlight-color:transparent; transition:background .2s ease, color .2s ease; }
+.earth button:hover { background:var(--ink); color:var(--bg-hi); }
+.earth button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.earth svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.e-pad, .e-zoom { background:rgba(251,248,241,.92); border:1px solid rgba(29,27,23,.14); box-shadow:0 10px 24px -16px rgba(29,27,23,.55); }
+.e-pad { position:relative; width:86px; height:86px; border-radius:50%; }
+.e-pad button { position:absolute; width:28px; height:28px; border-radius:50%; }
+.e-pad .e-n { left:28px; top:3px; } .e-pad .e-s { left:28px; bottom:3px; } .e-pad .e-w { left:3px; top:28px; } .e-pad .e-e { right:3px; top:28px; }
+.e-pad .e-home { left:28px; top:28px; background:rgba(29,27,23,.06); }
+.e-zoom { display:flex; flex-direction:column; border-radius:999px; overflow:hidden; }
+.e-zoom button { width:36px; height:34px; }
+.e-zoom button + button { border-top:1px solid rgba(29,27,23,.12); }
+
 .pill { position:fixed; left:0; top:0; z-index:10; pointer-events:none;
         font:600 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase;
         color:var(--bg-hi); background:var(--ink); padding:7px 10px 7px 11px; border-radius:999px;
@@ -123,10 +147,15 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
    them; the one that's up lifts its sheet out. Behind the scenes' sheet
    is the page itself, and it opens out into it — then the page is handed
    to its place, the slot, which overlaps the stack's last screen.        */
-.files { position:relative; z-index:1; height:215vh; }                  /* js/files.js sets it */
+.files { position:relative; z-index:1; height:215vh; pointer-events:none; }   /* js/files.js sets it; it starts over the end of
+                                                                              the globe's scroll (main.js), so it mustn't catch the pointer */
 .desk-slot { position:relative; z-index:2; margin-top:-100vh; }
 .desk-slot.empty { pointer-events:none; }
-.files-stage { position:sticky; top:0; height:100vh; height:100svh; overflow:hidden; overflow:clip; }
+/* while the folders' shots play (js/files.js), whatever a fling has carried into view behind them stays hidden */
+html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hidden; }
+/* fixed to the screen, not sticky: its shots play at their own pace, so they can run on a moment after the scroll
+   has moved past (js/files.js shows it only while there's something of it to see) */
+.files-stage { position:fixed; inset:0; overflow:hidden; overflow:clip; }
 .folder { position:absolute; will-change:transform; }
 .f-back { position:absolute; left:0; top:0; overflow:visible; }
 .f-back path { fill:var(--f-back); }
@@ -134,12 +163,20 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
          font:600 10px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:rgba(251,248,241,.94); }
 .f-tab span { opacity:.6; }
 .f-sheet { position:absolute; left:14px; right:14px; top:calc(var(--tab) + 5px); bottom:0; overflow:hidden; overflow:clip;
-           border-radius:6px 6px 0 0; background:var(--bg-hi); transform-origin:0 0; will-change:transform;
+           border-radius:6px 6px 0 0; background:var(--mark, none) var(--bg-hi); transform-origin:0 0; will-change:transform;
            box-shadow:0 -1px 0 rgba(29,27,23,.05), 0 10px 26px -14px rgba(29,27,23,.4); }
 .target .f-sheet { bottom:auto; }
 .f-front { position:absolute; left:0; right:0; bottom:0; top:calc(var(--tab) + var(--peek)); border-radius:10px 10px 0 0;
            background:var(--f-front); box-shadow:inset 0 1px 0 rgba(255,255,255,.16); }
 .f-page { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; }
+/* the globe's page, in the Work folder's sheet (js/files.js): the screen as it was — paper, grain, the 3D, the top bar */
+.holder .f-sheet { bottom:auto; }
+.f-shot { position:absolute; left:0; top:0; transform-origin:0 0; overflow:hidden; display:none; pointer-events:none; }
+.has-shot .f-shot { display:block; }
+.has-shot .f-note { visibility:hidden; }
+.f-shot-paper { position:absolute; inset:0; background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%); }
+.f-shot-grain { position:absolute; inset:0; opacity:.45; }
+.f-shot-3d { position:absolute; inset:0; width:100%; height:100%; }
 .f-note { display:grid; grid-template-columns:auto 1fr; column-gap:2vw; align-items:baseline; padding:2.2vh 2.2vw; }
 .f-n { font:500 10.5px/1 var(--mono); letter-spacing:.2em; color:var(--muted); }
 .f-name { font:400 clamp(26px, 3.4vh, 40px)/1 var(--serif); letter-spacing:-.01em; }
@@ -411,8 +448,12 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
   .hero-meta { margin-top:16px; }
   .notes { left:0; right:0; top:auto; bottom:40px; width:auto; height:42vh; aspect-ratio:auto; transform:none; }
   .readout { left:16px; right:16px; top:22px; bottom:auto; max-width:none; }   /* at the top: the hands have the bottom */
-  .guide { left:16px; right:16px; width:auto; top:124px; text-align:left; transform:translateY(6px); }   /* under it */
+  .guide { left:16px; right:16px; width:auto; top:124px; bottom:auto; text-align:left; transform:translateY(6px); }   /* under it */
   .guide.on { transform:none; }
+  .earth { right:12px; bottom:auto; top:40%; gap:8px; }
+  .e-pad { width:76px; height:76px; } .e-pad button { width:26px; height:26px; }
+  .e-pad .e-n, .e-pad .e-s { left:24px; } .e-pad .e-w, .e-pad .e-e { top:24px; } .e-pad .e-home { left:24px; top:24px; }
+  .e-zoom button { width:34px; height:32px; }
   .guide[data-mode="focus"] { top:18px; right:auto; max-width:calc(100% - 32px); padding:8px 11px; border-radius:8px;
                               background:rgba(243,237,226,.9); color:var(--ink); line-height:1.5; }
                               /* inside the globe the heading steps aside: the top is the guide's, on a scrap of paper over the cards */
@@ -425,12 +466,15 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
   .desk-title { font-size:clamp(38px, 11vw, 60px); }
   .desk-title small { display:block; margin:0 0 1.4vh; }
   .desk-intro { text-align:left; }
-  .desk-grid { row-gap:8vh; margin-top:6vh; }
+  .desk-grid { row-gap:5.5vh; margin-top:4.5vh; }             /* a phone scrolls through it: keep it close together */
   .desk-grid > .panel { grid-column:1 / -1; }
   .ty-best { flex-direction:column; align-items:flex-start; }
   .ty-best-meta { text-align:left; }
-  .mu { grid-template-columns:1fr; }
-  .mu-deck { max-width:320px; }
+  .mu { grid-template-columns:40% minmax(0, 1fr); gap:16px; }   /* a small deck beside its song and controls */
+  .mu-title { font-size:24px; }
+  .mu-seek { margin-top:14px; } .mu-ctrl { margin-top:12px; gap:8px; }
+  .mu-ctrl button { width:36px; height:36px; } .mu-ctrl .mu-play { width:44px; height:44px; }
+  .mu-list { grid-column:1 / -1; margin-top:16px; }
   .gh-map { overflow-x:auto; scrollbar-width:none; }
   .gh-map svg { width:680px; }
   .gh-stats { grid-template-columns:1fr 1fr; row-gap:26px; }

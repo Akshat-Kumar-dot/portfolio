@@ -197,6 +197,7 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   // spinner.rotation = (tilt, spin): a card at (lat, lon) faces the viewer when tilt = lat, spin = −lon
   let spin = 0.4, tilt = 0.12, vSpin = 0, vTilt = 0;
   let focus = null, spinT = 0, tiltT = 0;
+  let rest = 0.12;                                            // the lean it drifts back to when floating free (until you turn it yourself)
 
   function aimAt(card) {
     focus = card;
@@ -248,9 +249,17 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   function drag(dx, dy) {
     const k = focus ? 0.0032 : 0.006;
     vSpin = dx * k; vTilt = dy * k * (focus ? 1 : 0.66);
-    spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -0.6, focus ? 1.3 : 0.6);
+    spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -1, focus ? 1.3 : 1);
+    if (!focus && dy) rest = tilt;                            // tilted it yourself: it stays that way
     dragX += dx; dragY += dy;
   }
+  /* the pan control, held down: turn by (ax, ay) radians — round the poles, and over them */
+  function turn(ax, ay) {
+    spin += ax;
+    tilt = rest = THREE.MathUtils.clamp(tilt + ay, -1, 1);
+  }
+  /* back to how it floats at first: a slight forward lean, no spin of your own */
+  function home() { rest = 0.12; vSpin = vTilt = 0; }
   function release() {
     const dx = dragX, dy = dragY;
     dragX = dragY = 0;
@@ -275,7 +284,8 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     return null;
   }
 
-  /* s = { scrollSpin, hovered, dragging, idle, peek: {x, y} } */
+  /* s = { scrollSpin, hovered, dragging, idle, peek: {x, y}, frozen } — frozen: held exactly as it is
+     (while a picture of it stands in for it, in the Work folder) */
   /* a project's video plays only while its card is the one you've stopped on (k = its
      index in WORK; −1 plays nothing) — main.js decides, from the zoomed-in view */
   const videos = players.filter(Boolean);
@@ -288,6 +298,7 @@ export function createGlobe(renderer, { reduced = false } = {}) {
 
   function update(dt, s) {
     for (const p of videos) p.tick();
+    if (s.frozen) return;
     if (focus) {
       if (!s.dragging) {
         const k = 1 - Math.pow(0.0006, dt);                  // settle onto the focused card
@@ -296,8 +307,8 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     } else if (!s.dragging) {
       vSpin *= Math.pow(0.04, dt); vTilt *= Math.pow(0.02, dt);
       spin += (s.hovered ? 0.02 : GLOBE.spin * s.idle) * dt + vSpin + s.scrollSpin;
-      tilt = THREE.MathUtils.clamp(tilt + vTilt, -0.6, 0.6);
-      tilt += (0.12 - tilt) * (1 - Math.pow(0.3, dt));      // drift back to a slight forward lean
+      tilt = THREE.MathUtils.clamp(tilt + vTilt, -1, 1);
+      tilt += (rest - tilt) * (1 - Math.pow(0.3, dt));      // drift back to its lean
     }
     // in focus mode the cursor tilts the globe a little, to peek at the neighbours
     const px = focus && !s.dragging ? -s.peek.x * 0.07 : 0, py = focus && !s.dragging ? s.peek.y * 0.05 : 0;
@@ -312,7 +323,7 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     }
   }
 
-  return { group, cards, update, pick, drag, release, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos,
+  return { group, cards, rows, update, pick, drag, release, turn, home, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos,
            get focus() { return focus; },
            /* the focused card has arrived in the middle (not still swinging in) */
            get settled() { return !!focus && Math.abs(wrapAngle(spinT - spin)) < 0.02 && Math.abs(tiltT - tilt) < 0.02; } };

@@ -14,6 +14,9 @@ export const SITE = {
   location: 'India',
   about: 'I design and build software and AI tools — from the first sketch to the last pixel, and the model and the servers underneath. I care about the details people feel but rarely notice. (Replace this with a few lines about you.)',
   email: 'akshat.kumar.singh05@gmail.com',
+  // where the site lives once it's online, e.g. 'https://akshat-kumar-dot.github.io/portfolio/'. It goes in the
+  // watermark, tells search engines which copy is the original, and anywhere else the site says it's a copy (js/mark.js)
+  url: '',                                     // ←
   links: [
     { label: 'GitHub', url: '#' },
     { label: 'LinkedIn', url: '#' },
@@ -84,21 +87,27 @@ const STORY = {
   open:     [101, 187],     // they part…
   lift:     [103, 267],     // …and the globe rises out of them as they do, growing as it goes
   zoom:     [295, 381],     // then you step inside: one card fills the screen, its neighbours curve away
-  browse:   [381, 589]      // scrolling on walks down the globe row by row (BROWSE); then the folders
+  browse:   [381, 589],     // scrolling on walks down the globe row by row (BROWSE)…
+  unzoom:   [589, 645],     // …then you step back out, and the whole globe floats again
+  shrink:   [645, 705]      // and the page becomes a file: the screen shrinks into a sheet and goes into the Work
+                            // folder, the folders rising round it (FILES); then Behind the scenes comes up out of its own
 };
-export const STORY_VH = 589;
+export const STORY_VH = 705;
 
-/* However hard you scroll, these stretches play no faster than this, in vh a second:
-   a hard flick plays them through at a pace you can follow, then catches up with the page. */
+/* Speed zones: over these stretches the scroll itself goes no faster than this many vh a second,
+   however hard you scroll, once an ordinary scroll's worth (burst, in screens) is used up — so a
+   hard flick plays the moment at a pace you can follow, the animation in step with the scroll.
+   [from vh, to vh, vh a second, burst] (js/scroll.js) */
 const PACE = [
-  [0, 95, 62],              // the notes gather and the dot falls into the hands
-  [95, 267, 135],           // the hands part and the globe rises
-  [295, 381, 86]            // stepping inside the globe
+  [0, 95, 62, 0.75],        // the notes gather and the dot falls into the hands
+  [95, 267, 135, 1.0],      // the hands part and the globe rises
+  [295, 381, 86, 0.85],     // stepping inside the globe
+  [589, 705, 60, 0.5]       // stepping back out, and the page closing into its folder
 ];
 export const SCROLL = {                                   // the same, as fractions of the story (0 → 1)
   ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [a / STORY_VH, b / STORY_VH]])),
   spin: 7.2,                // radians the globe turns while it rises
-  pace: PACE.map(([a, b, v]) => [a / STORY_VH, b / STORY_VH, v / STORY_VH])
+  pace: PACE.map(([a, b, v, burst]) => [a / STORY_VH, b / STORY_VH, v, burst])
 };
 
 /* Inside the globe, scrolling walks through these rows, top to bottom
@@ -151,14 +160,16 @@ export const DESK = {
   ]
 };
 
-/* After the globe: the site's sections as a stack of folders. Scrolling
-   goes through them to Behind the scenes, and scrolling on opens it: its
-   sheet grows into the page. All of it follows the scroll, both ways.   */
+/* After the globe: the site's sections as a stack of folders. The globe's
+   page closes into Work as they rise round it (STORY.shrink); scrolling on
+   goes to Behind the scenes, and on again opens it: its sheet grows into
+   the page — the same thing, the other way. It all follows the scroll.  */
 export const FILES = {
   notes: 'Where every project starts — a vault of linked notes.',   // the line on the Notes folder's sheet
   cue: 'Keep scrolling to open',
-  stepVh: 30,                        // scrolling from one folder to the next, in vh
-  openVh: 55                         // scrolling to open Behind the scenes into the page, in vh
+  stepVh: 30,                        // scrolling from one folder to the next (Work → Behind the scenes), in vh
+  openVh: 55,                        // scrolling to open Behind the scenes into the page, in vh
+  pace: [36, 0.08]                   // through those two: a speed zone (vh a second, burst in screens — see STORY's)
 };
 
 /* The hands. Colours are taken from real skin: backs darker, palms lighter. */
