@@ -21,7 +21,9 @@ import { paintGrain } from './grain.js';
 const year = new Date().getFullYear();
 const home = (() => { try { return SITE.url ? new URL(SITE.url) : null; } catch { return null; } })();
 export const SIGN = `© ${year} ${SITE.name}`;                       // on the cards
-export const MARK = SIGN + (home ? ` · ${home.host}${home.pathname.replace(/\/$/, '')}` : '');
+// (the address goes in the paper's mark too when it's short enough to fit its tile — a domain of your own, say)
+const where = home ? home.host + home.pathname.replace(/\/$/, '') : '';
+export const MARK = SIGN + (where && where.length <= 24 ? ` · ${where}` : '');
 
 /* the paper's mark: two lines of it on a slant, in a tile that repeats */
 function markTile() {
