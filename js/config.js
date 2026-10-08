@@ -1,6 +1,7 @@
 /* ============================================================
    CONFIG — everything you're likely to edit lives here.
    ============================================================ */
+import { HANDHELD } from './device.js';
 
 /* The landing page and the sections after the globe.
    Wrap a word in *asterisks* in the headline to set it in italics.
@@ -75,7 +76,8 @@ export const GLOBE = {
 
 /* Scroll choreography, in vh of scrolling from the top (100 = one screen's
    height). Everything follows the scroll directly and runs backwards when
-   you scroll back up. The story is as long as its last number.          */
+   you scroll back up. The story is as long as its last number (a phone's
+   opening is shorter: PHONE_OPENING, below).                            */
 const STORY = {
   intro:    [0, 30],        // the headline lifts away
   collapse: [0, 45],        // the notes graph gathers into a single dot
@@ -90,7 +92,14 @@ const STORY = {
   shrink:   [648, 705]      // and the page becomes a file: the screen shrinks into a sheet and goes into the Work
                             // folder, the folders rising round it (FILES); then Behind the scenes comes up out of its own
 };
-export const STORY_VH = 705;
+/* On a phone a swipe covers far less than a turn of the wheel, so the opening is shorter there: the story up to
+   `until` (the headline lifting, the notes gathering into the dot, the dot falling into the hands) takes `take` of
+   the scrolling — so each of its two moves, the notes into the dot and the dot into the hands, is a swipe, either
+   way. Everything after it comes that much sooner. */
+const PHONE_OPENING = { until: 95, take: 0.6 };
+const { until: U, take: K } = PHONE_OPENING;
+const here = v => !HANDHELD ? v : v <= U ? v * K : v - U * (1 - K);   // a point in the story (vh), on this device
+export const STORY_VH = here(705);
 
 /* Speed zones: over these stretches the page moves no faster than this many vh a second, however
    hard you scroll — a gentle scroll or a hard one, on the way in or the way back — so every moment
@@ -111,10 +120,10 @@ const PACE = [
   [648, 705, 60, 0.3, true]     // the page closing into its folder — all the way in, or back out to the page
 ];
 export const SCROLL = {                                   // the same, as fractions of the story (0 → 1)
-  ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [a / STORY_VH, b / STORY_VH]])),
+  ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [here(a) / STORY_VH, here(b) / STORY_VH]])),
   spin: 7.2,                // radians the globe turns while it rises
   phoneOpening: 1.9,        // on a phone, the opening (the dot to the hands, the globe rising) this much quicker
-  pace: PACE.map(([a, b, ...rest]) => [a / STORY_VH, b / STORY_VH, ...rest])
+  pace: PACE.map(([a, b, ...rest]) => [here(a) / STORY_VH, here(b) / STORY_VH, ...rest])
 };
 
 /* Inside the globe, scrolling walks through these rows, top to bottom
@@ -177,7 +186,8 @@ export const FILES = {
   stepVh: 30,                        // scrolling from one folder to the next (Work → Behind the scenes), in vh
   openVh: 55,                        // scrolling to open Behind the scenes into the page, in vh
   pace: [36, 0.25],                  // through those two: a speed zone (vh a second, carry in screens — see STORY's)
-  phoneQuick: 2.5                    // on a phone, this much quicker (a swipe covers far less than a turn of the wheel)
+  phoneQuick: 2.5                    // on a phone the opening this much quicker (a swipe covers far less than a turn of
+                                     // the wheel) — not the page sinking into its folder, which would look like a drop
 };
 
 /* The hands. Colours are taken from real skin: backs darker, palms lighter. */

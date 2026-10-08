@@ -278,6 +278,8 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
   fit();
 
   return {
+    /* where in the page Behind the scenes, up out of its folder, starts to open into the page */
+    opensAt: () => box(section).top + CLOSE + STEP,
     /* the globe's page, standing in for it in its folder: main.js draws the 3D into `canvas`,
        full screen, then calls ready() — the paper and its grain are copied from the page itself */
     shot: shot && {

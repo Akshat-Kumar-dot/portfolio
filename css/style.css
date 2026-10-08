@@ -442,12 +442,12 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
 @media (max-width:760px) {
   :root { --gutter:16px; }
   .top { display:none; }                                    /* a phone's top is the Projects heading (below) */
-  .hero { left:16px; right:16px; top:26%; max-width:none; }
+  .hero { left:16px; right:16px; top:21%; max-width:none; }
   .hero h1 { font-size:clamp(60px, 19vw, 110px); }
   .hero h1 .line + .line { padding-left:.4em; }
   .tagline { margin-top:18px; font-size:22px; }
   .hero-meta { margin-top:16px; }
-  .notes { left:0; right:0; top:auto; bottom:40px; width:auto; height:42vh; aspect-ratio:auto; transform:none; }
+  .notes { left:0; right:0; top:auto; bottom:calc(40px + 6vh); width:auto; height:42vh; aspect-ratio:auto; transform:none; }
   .readout { left:16px; right:16px; top:22px; bottom:auto; max-width:none; }   /* at the top: the hands have the bottom */
   .guide { left:16px; right:16px; width:auto; top:124px; bottom:auto; text-align:left; transform:translateY(6px); }   /* under it */
   .guide.on { transform:none; }

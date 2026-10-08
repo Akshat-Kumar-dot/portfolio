@@ -19,6 +19,14 @@
       (SUPERSAMPLE) and, should it struggle, eases down to the screen's
       own pixels but no further; a phone draws at its screen's own and
       stays there. Only a budget phone trims below that (governor).
+   5. Nothing worked out the moment it's first needed. The first frame
+      the globe was drawn in took a quarter of a second — its shaders
+      worked out, its pictures sent to the graphics chip, just as it
+      rose out of the hands. That's all done while the landing is up.
+   6. The same frame isn't drawn twice. Looking at a card inside the
+      globe, nothing moves: the frame would be the one on the screen.
+   7. A light that's out doesn't cost anything: the glow between the
+      closed hands is taken out of the lighting while it's dark.
    ============================================================ */
 import { PERF } from './device.js';
 
@@ -57,6 +65,10 @@ export function castFromCopies(renderer, pairs) {
   };
 }
 
+/* the hands only breathe once they're open and the globe has risen clear of them — a fraction of a millimetre a
+   second — so then their shadow is worked out afresh only every this many frames (it can't be told apart) */
+export const STILL_SHADOW_EVERY = 3;
+
 /* ---------- 4. how sharp the 3D is drawn ---------- */
 /* stage.js: the pixel ratio to draw at, given how far the governor has trimmed it (quality 0.5 … 1) */
 export function pixelRatio(quality) {
@@ -89,5 +101,64 @@ export function createGovernor(stage) {
       }
       else gov.calm = 0;
     }
+  };
+}
+
+/* ---------- 5. made ready before it's needed ----------
+   The shaders for everything in the scene, in the background — both ways it can be lit (`lights` on, and out: 7) —
+   and then, once they're done, draw() (from the frame loop): everything drawn once at a single pixel, what's out of
+   sight too (`show`: the hands below the screen, the globe inside them), so the pictures go up to the graphics chip
+   and the last few shaders (the shadows') are made; and rubbed out before it's ever seen */
+export function prepare(renderer, scene, camera, { show = [], lights = [] } = {}) {
+  const state = { ready: false, done: false };
+  (async () => {
+    for (const on of [true, false]) {
+      for (const l of lights) l.visible = on;                   // (the frame loop sets them back as it needs them)
+      await renderer.compileAsync(scene, camera).catch(() => {});
+    }
+    state.ready = true;
+  })();
+  state.draw = () => {
+    state.done = true;
+    const culled = [], seen = show.map(o => o.visible);
+    scene.traverse(o => { if (o.isMesh && o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
+    for (const o of show) o.visible = true;
+    renderer.setScissorTest(true); renderer.setScissor(0, 0, 1, 1);
+    renderer.shadowMap.needsUpdate = true;
+    renderer.render(scene, camera);
+    renderer.setScissorTest(false);
+    renderer.clear();
+    show.forEach((o, i) => { o.visible = seen[i]; });
+    for (const o of culled) o.frustumCulled = true;
+  };
+  return state;
+}
+
+/* ---------- 6. the same frame isn't drawn twice ----------
+   A canvas that isn't drawn to keeps showing what it showed. So when nothing in the frame has moved — the camera,
+   `object` (the globe), the canvas's size, and `still` (what can't be read from where things are: the globe's own
+   turning, its pictures; the hands, always breathing, out of view) — it isn't drawn again. forget(): the canvas has
+   been drawn on or cleared some other way */
+export function createRedraw(renderer, camera) {
+  let was = [], now = [], held = false;
+  return {
+    needed(still, object) {
+      let i = 0;
+      for (const x of camera.matrixWorld.elements) now[i++] = x;
+      for (const x of camera.projectionMatrix.elements) now[i++] = x;
+      now[i++] = renderer.domElement.width; now[i++] = renderer.domElement.height; now[i++] = renderer.getPixelRatio();
+      if (object) {
+        const { position: p, quaternion: q, scale: s } = object;
+        now[i++] = object.visible ? 1 : 0;
+        now[i++] = p.x; now[i++] = p.y; now[i++] = p.z; now[i++] = q.x; now[i++] = q.y; now[i++] = q.z; now[i++] = q.w;
+        now[i++] = s.x; now[i++] = s.y; now[i++] = s.z;
+      }
+      now.length = i;
+      let same = held && still && i === was.length;
+      for (let k = 0; same && k < i; k++) same = now[k] === was[k];
+      const t = was; was = now; now = t; held = true;           // (the two take turns: nothing made each frame)
+      return !same;
+    },
+    forget() { held = false; }
   };
 }

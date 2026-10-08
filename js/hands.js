@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { HAND, GLOBE } from './config.js';
+import { HAND } from './config.js';
 import { clamp, lerp, eio } from './utils.js';
 import { subdivideSkinned } from './subdivide.js';
 import { PERF } from './device.js';

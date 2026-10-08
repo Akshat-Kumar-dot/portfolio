@@ -33,11 +33,11 @@ import { createGlobe } from './globe.js';
 import { createGraph } from './graph.js';
 import { createFiles, graphSketch } from './files.js';
 import { createDesk } from './desk.js';
-import { initSmoothScroll, jumpTo, glideTo, slowIn, holdTouch } from './scroll.js';
+import { initSmoothScroll, jumpTo, glideTo, slowIn, landOn, holdTouch } from './scroll.js';
 import { createReveals } from './reveal.js';
 import * as pen from './scribble.js';
 import { PERF, HANDHELD } from './device.js';
-import { box, createGovernor, castFromCopies, CARD_SHADOW_UNTIL } from './perf.js';
+import { box, createGovernor, castFromCopies, CARD_SHADOW_UNTIL, STILL_SHADOW_EVERY, prepare, createRedraw } from './perf.js';
 
 const params = new URLSearchParams(location.search);
 const FORCE_P = parseFloat(params.get('p'));
@@ -201,7 +201,12 @@ function zoomDistance(R) {
 /* ---------- the readout (top-left: Projects, or the card you're on) and the guide line (bottom-centre) ---------- */
 let mode = 'rising';                                        // rising → free → zooming → focus (→ zooming → free) → packing
 const idx = v => '<b>' + v + '</b><span>/</span><span>' + pad(WORK.length) + '</span>';
-function swap() { readout.classList.remove('swap'); void readout.offsetWidth; readout.classList.add('swap'); }
+function swap() {
+  // (out of sight — inside the globe, card after card — it isn't played: setting it off makes the browser lay the
+  // page out there and then, mid-frame, just as the globe turns to the next card)
+  if (readout.classList.contains('away')) return;
+  readout.classList.remove('swap'); void readout.offsetWidth; readout.classList.add('swap');
+}
 function showDefault() {
   roIdx.innerHTML = idx('—');
   roTitle.innerHTML = '<em>Projects</em>';
@@ -450,6 +455,7 @@ function cardOnScreen(card) {
   return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, a: (x1 - x0) / 2, b: (y1 - y0) / 2 };
 }
 const circle = { card: null, pts: null, on: 0, off: 0, n: 0 };
+const inked = { card: null, on: 0, off: 0, w: 0, cx: 0, cy: 0, a: 0, b: 0 };   // the loop as it was last drawn
 let inkDirty = false;
 function drawCircle(dt) {
   let want = null;
@@ -470,14 +476,19 @@ function drawCircle(dt) {
   }
 
   if (!circle.card && !inkDirty) return;
+  const r = circle.card ? cardOnScreen(circle.card) : null;
+  // (the same loop round the same card, drawn as far, where it was: what's on the canvas already is it)
+  if (r && inkDirty && inked.card === circle.card && inked.on === circle.on && inked.off === circle.off && inked.w === inkCanvas.width &&
+      Math.abs(inked.cx - r.cx) + Math.abs(inked.cy - r.cy) + Math.abs(inked.a - r.a) + Math.abs(inked.b - r.b) < 0.02) return;
   inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
   inkDirty = false;
   inkCanvas.style.visibility = circle.card ? '' : 'hidden';   // (empty, it's out of the way: one less layer over the screen to blend)
   if (!circle.card) return;
-  const r = cardOnScreen(circle.card), a = r.a * 1.1, b = r.b * 1.17;
+  const a = r.a * 1.1, b = r.b * 1.17;
   const ease = t => t * t * (3 - 2 * t);
   pen.draw(inkCtx, circle.pts, (u, v) => [(r.cx + u * a) * inkDpr, (r.cy + v * b) * inkDpr],
     ease(circle.off), ease(circle.on), clamp(W / 560, 1.8, 3.4) * inkDpr);
+  Object.assign(inked, r, { card: circle.card, on: circle.on, off: circle.off, w: inkCanvas.width });
   inkDirty = true;
 }
 
@@ -497,11 +508,20 @@ for (const [a, b, v, carry, whole] of SCROLL.pace) {
   const k = HANDHELD && a < SCROLL.zoom[0] ? SCROLL.phoneOpening : 1;
   slowIn(() => [storyPx(a), storyPx(b)], v * k, carry * k, whole);
 }
-slowIn(() => [storyPx(1), box($('deskSlot')).top], FILES.pace[0] * (HANDHELD ? FILES.phoneQuick : 1), FILES.pace[1] * (HANDHELD ? FILES.phoneQuick : 1));
+// and there, the dot comes to rest in the hands (a swipe that would carry on past them stops there): the notes into
+// the dot, the dot into the hands, and the next swipe the globe out of them — not all of it in one go
+if (HANDHELD) landOn(() => storyPx(SCROLL.drop[1]));
+// (the page sinking into its folder and the next one rising out of its own go at the same pace everywhere — quicker,
+// on a phone, they'd look like a drop; Behind the scenes opening into the page is quicker there, as the opening is)
+const quick = HANDHELD ? FILES.phoneQuick : 1;
+slowIn(() => [storyPx(1), files.opensAt()], FILES.pace[0], FILES.pace[1]);
+slowIn(() => [files.opensAt(), box($('deskSlot')).top], FILES.pace[0] * quick, FILES.pace[1] * quick);
 
-/* ---------- keeping it smooth: how sharp the 3D is drawn, should the device struggle (js/perf.js) ---------- */
-const governor = createGovernor(stage);
+/* ---------- keeping it smooth (js/perf.js) ---------- */
+const governor = createGovernor(stage);                   // how sharp the 3D is drawn, should the device struggle
 hands.ready.then(() => castFromCopies(renderer, hands.casters()));   // the hands' shadows, from lighter copies of them
+const redraw = createRedraw(renderer, camera);            // the same frame isn't drawn twice
+let prepared = null, shadowAt = 0, pairY = 0;             // (the 3D made ready while the landing's up: see the foot of the file)
 
 /* what's in view: the hands are skinned and cast shadows — no need for either once they're
    off screen (before they rise, and once you're inside the globe) */
@@ -516,7 +536,7 @@ let blank = false;
 
 /* ---------- loop ---------- */
 const _at = new THREE.Vector3(), _close = new THREE.Vector3(), _ray = new THREE.Vector3(), _from = new THREE.Vector3();
-let p = scrollTarget(), pPrev = p, last = performance.now(), lastFocus = null, readoutAway = true;
+let p = scrollTarget(), pPrev = p, last = performance.now(), lastFocus = null, readoutAway = true, shownIntro = -1, shownHint = -1;
 let videoK = -1;                                            // the project whose video is playing, if any
 
 /* ---------- your own zoom, and the pan control (Google Earth-like) ----------
@@ -567,6 +587,7 @@ function snapPage(time) {
   scene.fog.near = d - GLOBE.radius * 0.2; scene.fog.far = d + GLOBE.radius * 5.5;
   renderer.shadowMap.needsUpdate = true;
   renderer.render(scene, camera);
+  redraw.forget();                                          // (what's on the canvas now isn't the frame the loop last drew)
   const out = files.shot.canvas, src = renderer.domElement;
   out.width = src.width; out.height = src.height;
   out.getContext('2d').drawImage(src, 0, 0);
@@ -579,6 +600,11 @@ function frame(now) {
   requestAnimationFrame(frame);
   lenis?.raf(now);                                          // the smooth scroll moves first: everything below is drawn where the page now is
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (prepared?.ready && !prepared.done) {                  // the shaders are made: everything drawn once, unseen (js/perf.js)
+    prepared.draw();
+    inView(hands.pair, 0);                                  // (and the hands measured, which takes a moment the first time)
+    redraw.forget(); blank = true;
+  }
   if (handsEdge) {                                          // a phone's address bar coming or going: the wrists follow the bottom of the screen
     const aim = onScreen();
     if (Math.abs(aim - seen) > 0.5) { seen += (aim - seen) * (1 - Math.exp(-dt * 14)); if (Math.abs(aim - seen) < 0.5) seen = aim; setEdge(); }
@@ -629,8 +655,11 @@ function frame(now) {
   // camera: the fixed view, carried in toward the front card as you zoom — and your own zoom on top
   // (z beyond 1 goes closer than the scroll does, below 0 further out than the floating view)
   // (stepped back out, floating a moment before the page closes, it's just as its picture will have it: no zoom of your own, no peek)
-  uzW += (((mode === 'free' && !unzoom) || mode === 'focus' ? 1 : 0) - uzW) * (1 - Math.exp(-dt * 8));
+  const uzWT = (mode === 'free' && !unzoom) || mode === 'focus' ? 1 : 0;
+  uzW += (uzWT - uzW) * (1 - Math.exp(-dt * 8));
   uz += (uzT - uz) * (1 - Math.exp(-dt * 9));
+  if (Math.abs(uzWT - uzW) < 1e-5) uzW = uzWT;              // (there: quite still, so the camera is)
+  if (Math.abs(uzT - uz) < 1e-5) uz = uzT;
   const z = clamp(zoom + uz * uzW, Z_MIN, Z_MAX);
   camera.position.copy(CAM_POS);
   _at.copy(CAM_AT);
@@ -648,12 +677,19 @@ function frame(now) {
   camera.updateMatrixWorld();
 
   // the landing line lifts away, and the notes graph folds into a dot
-  const intro = sm(SCROLL.intro, p), fold = sm(SCROLL.collapse, p);
-  hero.style.opacity = (1 - intro).toFixed(3);
-  hero.style.setProperty('--up', (intro * 60).toFixed(1) + 'px');
-  hero.style.visibility = intro >= 1 ? 'hidden' : 'visible';
-  hint.style.opacity = (1 - sm([0, 0.03], p)).toFixed(3);
-  hint.style.visibility = p >= 0.03 ? 'hidden' : '';       // (faded out: its looping drip stops with it)
+  // (each written only as it changes: past the landing, frame after frame, they're long gone)
+  const intro = sm(SCROLL.intro, p), fold = sm(SCROLL.collapse, p), hintOut = sm([0, 0.03], p);
+  if (intro !== shownIntro) {
+    shownIntro = intro;
+    hero.style.opacity = (1 - intro).toFixed(3);
+    hero.style.setProperty('--up', (intro * 60).toFixed(1) + 'px');
+    hero.style.visibility = intro >= 1 ? 'hidden' : 'visible';
+  }
+  if (hintOut !== shownHint) {
+    shownHint = hintOut;
+    hint.style.opacity = (1 - hintOut).toFixed(3);
+    hint.style.visibility = hintOut >= 1 ? 'hidden' : '';  // (faded out: its looping drip stops with it)
+  }
   foldNotes(fold < 0.003 ? 0 : fold);                       // a hair from the top counts as unfolded, so the graph stays usable
 
   // once folded, the dot is handed to the 3D scene at the same spot and size: it falls,
@@ -732,30 +768,44 @@ function frame(now) {
   }
 
   // warm light glowing between the closed fingers, fading as they part
-  // it flares as the full stop lands between the thumbs
-  const land = Math.exp(-(((p - SCROLL.drop[1]) * STORY_VH / 7.2) ** 2));
+  // it flares as the full stop lands between the thumbs (over the last seventh or so of its fall, and as far past it)
+  const land = Math.exp(-(((p - SCROLL.drop[1]) / (SCROLL.drop[1] - SCROLL.drop[0]) / 0.144) ** 2));
   stage.inner.intensity = 0.05 * enter * (1 - sm([0.04, 0.3], open)) * (0.85 + 0.15 * Math.sin(time * 2.1) + 1.4 * land);
+  stage.inner.visible = stage.inner.intensity > 0;          // out, it's taken out of the lighting altogether (js/perf.js)
 
   // (before they rise the hands wait below the screen: nothing of them to draw — the test of what's in view can't
   // tell, as it goes by the hands at rest)
   const handsSeen = enter > 0.001 && inView(hands.pair, 0.01);
   globe?.castShadows(lift < CARD_SHADOW_UNTIL);             // the globe's own shadow reaches the hands only while it's low in them
   hands.pair.visible = handsSeen;
-  renderer.shadowMap.autoUpdate = handsSeen;                // only the hands take shadows
+  // only the hands take shadows — none to work out while they're out of view; and while they're still (open, the
+  // globe risen clear, the screen's edge not moving: they only breathe) a fresh one every few frames is the same
+  const still = open >= 1 && enter >= 1 && lift >= 1 && Math.abs(hands.pair.position.y - pairY) < 1e-4;
+  pairY = hands.pair.position.y;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = handsSeen && (!still || ++shadowAt % STILL_SHADOW_EVERY === 0);
   if (!handed && (handsSeen || dot.visible || (globe && lift > 0.001))) {   // (once the page is in its folder, nothing to draw)
-    renderer.render(scene, camera);
+    // (and not again if it would be the frame already on the screen: the hands out of view, nothing moved)
+    if (redraw.needed(!handsSeen && !dot.visible && !!globe?.still, globe?.group)) {
+      renderer.render(scene, camera);
+      governor.tick(dt, now);
+    }
     blank = false;
-    governor.tick(dt, now);
-  } else if (!blank) { renderer.clear(); blank = true; }    // nothing 3D in view (the landing): draw nothing
+  } else if (!blank) { renderer.clear(); blank = true; redraw.forget(); }   // nothing 3D in view (the landing): draw nothing
   if (globe) drawCircle(dt);                                // after the render, so the card's position is this frame's
 }
 
-coverFontsReady().then(() => {
+const made = coverFontsReady().then(() => {
   globe = createGlobe(renderer, { reduced });
   governor.wait(2000);                                      // its textures go up to the GPU first
   scene.add(globe.group);
   // the Work folder's sheet: the first few covers, as on the globe
   for (let k = 0; k < Math.min(3, WORK.length); k++) workThumbs.append(drawCover(WORK[k], k, WORK.length, () => {}));
+});
+// the hands' and the globe's shaders and pictures, made ready while the landing's up rather than the moment they're
+// first drawn — mid-scroll, as they rise into view (js/perf.js)
+Promise.all([hands.ready, made]).then(() => {
+  prepared = prepare(renderer, scene, camera, { show: [hands.pair, globe.group, dot], lights: [stage.inner] });
 });
 addEventListener('visibilitychange', () => { if (document.hidden) { videoK = -1; globe?.setPlaying(-1); } });
 requestAnimationFrame(frame);

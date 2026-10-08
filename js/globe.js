@@ -89,8 +89,9 @@ function cardMaterial(map, player) {
   return m;
 }
 
-/* the video for a project that has one: muted, looping, and only playing while the globe is on screen */
-function makePlayer(item, cover, coverTex, reduced) {
+/* the video for a project that has one: muted, looping, and only playing while the globe is on screen
+   (touch: called whenever how the card looks changes, without the video playing) */
+function makePlayer(item, cover, coverTex, reduced, touch) {
   const v = document.createElement('video');
   Object.assign(v, { muted: true, loop: true, playsInline: true, preload: TIER === 'full' ? 'auto' : 'metadata', crossOrigin: 'anonymous' });   // phones fetch the clip when it plays
   v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('aria-hidden', 'true');
@@ -113,10 +114,10 @@ function makePlayer(item, cover, coverTex, reduced) {
     if (s === shownSec || !v.duration) return;
     shownSec = s;
     cover.player.drawTime(s, Math.round(v.duration));
-    coverTex.needsUpdate = true;
+    coverTex.needsUpdate = true; touch();
   };
-  v.addEventListener('loadedmetadata', () => { uniforms.uVideoAspect.value = v.videoWidth / v.videoHeight; showTime(); });
-  v.addEventListener('playing', () => { uniforms.uVideoOn.value = 1; });
+  v.addEventListener('loadedmetadata', () => { uniforms.uVideoAspect.value = v.videoWidth / v.videoHeight; showTime(); touch(); });
+  v.addEventListener('playing', () => { uniforms.uVideoOn.value = 1; touch(); });
   return {
     uniforms, el: v,
     /* on: from the start. off: stopped, and the card goes back to its still, timeline empty */
@@ -127,7 +128,7 @@ function makePlayer(item, cover, coverTex, reduced) {
       }
       if (!v.paused) v.pause();
       uniforms.uVideoOn.value = 0; uniforms.uProgress.value = 0;
-      shownSec = -1;
+      shownSec = -1; touch();
       if (v.duration) { cover.player.drawTime(0, Math.round(v.duration)); coverTex.needsUpdate = true; }
     },
     tick() {
@@ -143,17 +144,22 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   const spinner = new THREE.Group();
   group.add(spinner);
 
+  /* still: nothing about it changed this frame — not turned, no card rising under the pointer, no picture redrawn, no
+     video playing — so (the camera still too) the frame would be the one already on the screen (main.js) */
+  let still = false, touched = true;                         // touched: one of its pictures has changed since the last frame
+  const touch = () => { touched = true; };
+
   const CW = GLOBE.cardWidth, CH = CW * (COVER_H / COVER_W);
   const geo = wrap(new THREE.PlaneGeometry(CW, CH, 14, 10));
   const aniso = Math.min(renderer.capabilities.getMaxAnisotropy(), PERF.aniso);
 
   const players = [];
   const textures = WORK.map((item, i) => {
-    const cover = drawCover(item, i, WORK.length, () => { t.needsUpdate = true; });
+    const cover = drawCover(item, i, WORK.length, () => { t.needsUpdate = true; touch(); });
     const t = new THREE.CanvasTexture(cover);
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
-    players[i] = item.video && cover.player ? makePlayer(item, cover, t, reduced) : null;
+    players[i] = item.video && cover.player ? makePlayer(item, cover, t, reduced, touch) : null;
     return t;
   });
 
@@ -203,6 +209,21 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   let focus = null, spinT = 0, tiltT = 0;
   let rest = 0.12;                                            // the lean it drifts back to when floating free (until you turn it yourself)
 
+  // zoomed in, it settles onto a card like a spring, critically damped: it sets off gently, picks up and eases in,
+  // never past it — and should the card change on the way (you've scrolled on a row), it carries on from how it's
+  // moving rather than lurching off again
+  const SETTLE = 13;                                         // how quickly (about half a second, all told)
+  let wSpin = 0, wTilt = 0;                                   // how fast it's turning as it settles, radians a second
+  function settleOnto(dt) {
+    const e = Math.exp(-SETTLE * dt);
+    let d = spin - spinT, b = wSpin + SETTLE * d;
+    spin = spinT + (d + b * dt) * e; wSpin = (wSpin - b * SETTLE * dt) * e;
+    d = tilt - tiltT; b = wTilt + SETTLE * d;
+    tilt = tiltT + (d + b * dt) * e; wTilt = (wTilt - b * SETTLE * dt) * e;
+    if (Math.abs(spin - spinT) < 1e-5 && Math.abs(wSpin) < 1e-4) { spin = spinT; wSpin = 0; }   // there: quite still
+    if (Math.abs(tilt - tiltT) < 1e-5 && Math.abs(wTilt) < 1e-4) { tilt = tiltT; wTilt = 0; }
+  }
+
   function aimAt(card) {
     focus = card;
     tiltT = card.lat;
@@ -216,9 +237,9 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     return best;
   }
 
-  /* focus mode on/off: on, the card nearest the front swings round to face you */
+  /* focus mode on/off: on, the card nearest the front swings round to face you (from the way it was turning) */
   function setFocus(on) {
-    if (on && !focus) aimAt(nearestTo(tilt, spin));
+    if (on && !focus) { aimAt(nearestTo(tilt, spin)); wSpin = drift; wTilt = 0; }
     if (!on && focus) { focus = null; vSpin = vTilt = 0; }
   }
   /* move the focus: dx = ±1 column (right/left), dy = ±1 row (up/down).
@@ -248,14 +269,16 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   }
   function focusCard(card) { if (focus && card) aimAt(card); }
 
-  /* drag: in free mode the globe spins; in focus mode it follows the finger, then snaps */
-  let dragX = 0, dragY = 0;
+  /* drag: in free mode the globe spins; in focus mode it follows the finger, then settles onto a card */
+  let dragX = 0, dragY = 0, dragAt = 0, dragW = 0;           // (dragW: how fast it's being turned, radians a second)
   function drag(dx, dy) {
     const k = focus ? 0.0032 : 0.006;
     vSpin = dx * k; vTilt = dy * k * (focus ? 1 : 0.66);
     spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -TILT, focus ? 1.3 : TILT);
     if (!focus && dy) rest = tilt;                            // tilted it yourself: it stays that way
     dragX += dx; dragY += dy;
+    const now = performance.now(), gap = Math.min(0.1, Math.max(0.004, (now - dragAt) / 1000));
+    dragAt = now; dragW += (vSpin / gap - dragW) * 0.5;
   }
   /* the pan control, held down: turn by (ax, ay) radians — round the poles, and over them */
   function turn(ax, ay) {
@@ -268,13 +291,18 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     const dx = dragX, dy = dragY;
     dragX = dragY = 0;
     if (!focus) return;
+    const w = performance.now() - dragAt < 80 ? dragW : 0;   // how fast it was turning as the finger let go
     const next = nearestTo(tilt, spin);                        // wherever the drag left it
     vSpin = vTilt = 0;
-    if (next !== focus) return aimAt(next);
+    if (next !== focus) aimAt(next);
     // a flick too short to reach the next card still moves exactly one
-    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) return stepFocus(dx < 0 ? 1 : -1, 0);
-    if (Math.abs(dy) > 40) return stepFocus(0, dy > 0 ? 1 : -1);
-    aimAt(focus);
+    else if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) stepFocus(dx < 0 ? 1 : -1, 0);
+    else if (Math.abs(dy) > 40) stepFocus(0, dy > 0 ? 1 : -1);
+    else aimAt(focus);
+    // it settles from the way the finger left it turning (no faster than lets it ease in without going past the card)
+    const to = spinT - spin;
+    wSpin = Math.sign(w) === Math.sign(to) ? Math.sign(w) * Math.min(Math.abs(w), SETTLE * Math.abs(to)) : 0;
+    wTilt = 0;
   }
 
   const _n = new THREE.Vector3(), _q = new THREE.Quaternion();
@@ -302,12 +330,11 @@ export function createGlobe(renderer, { reduced = false } = {}) {
 
   function update(dt, s) {
     for (const p of videos) p.tick();
+    const rx = spinner.rotation.x, ry = spinner.rotation.y;
+    still = false;
     if (s.frozen) return;
     if (focus) {
-      if (!s.dragging) {
-        const k = 1 - Math.pow(0.0006, dt);                  // settle onto the focused card
-        spin += (spinT - spin) * k; tilt += (tiltT - tilt) * k;
-      }
+      if (!s.dragging) settleOnto(dt);                       // settle onto the focused card
     } else if (!s.dragging) {
       vSpin *= Math.pow(0.04, dt); vTilt *= Math.pow(0.02, dt);
       // pointing at a card, it eases to a stop — so the card stays where the pointer is (a globe that kept creeping
@@ -321,11 +348,13 @@ export function createGlobe(renderer, { reduced = false } = {}) {
     const px = focus && !s.dragging ? -s.peek.x * 0.07 : 0, py = focus && !s.dragging ? s.peek.y * 0.05 : 0;
     spinner.rotation.set(tilt + py, spin + px, 0, 'XYZ');
 
+    let rising = false;                                      // a card coming up or going back down under the pointer
     for (const c of cards) {
       const target = c === s.hovered && !focus ? 1 : 0;
-      if (!target && !c.hover) continue;                     // at rest and staying so: nothing to do (most of them, most frames)
+      if (target === c.hover) continue;                      // at rest and staying so: nothing to do (most of them, most frames)
+      rising = true;
       c.hover += (target - c.hover) * (1 - Math.pow(0.0008, dt));
-      if (!target && c.hover < 1e-3) c.hover = 0;
+      if (Math.abs(target - c.hover) < 1e-3) c.hover = target;
       c.mesh.position.copy(c.dir).multiplyScalar(1 + c.hover * 0.07);
       c.mesh.scale.setScalar(1 + c.hover * 0.12);
       // glowing: on a copy of its project's material, its own (the same shader, so nothing to compile); at rest, back on the shared one
@@ -335,6 +364,8 @@ export function createGlobe(renderer, { reduced = false } = {}) {
         c.mesh.material = c.own;
       } else c.mesh.material = shared[c.k];
     }
+    still = !touched && !rising && spinner.rotation.x === rx && spinner.rotation.y === ry && videos.every(p => p.el.paused);
+    touched = false;
   }
 
   /* whether the cards (and the poles' medallions) cast shadows — only while the globe is low in the hands do they reach them */
@@ -346,7 +377,7 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   }
 
   return { group, cards, rows, update, pick, drag, release, turn, home, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos, castShadows,
-           get focus() { return focus; },
+           get focus() { return focus; }, get still() { return still; },
            /* the focused card has arrived in the middle (not still swinging in) */
            get settled() { return !!focus && Math.abs(wrapAngle(spinT - spin)) < 0.02 && Math.abs(tiltT - tilt) < 0.02; } };
 }

@@ -1,7 +1,6 @@
 /* Small shared helpers. */
 
 export const TAU = Math.PI * 2;
-export const DEG = 180 / Math.PI;
 
 export const $ = id => document.getElementById(id);
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -27,13 +26,6 @@ export function rng(seed) {
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
-}
-
-/* stable 0..1 value for a key */
-export function hash01(key) {
-  let a = 2166136261;
-  for (let q = 0; q < key.length; q++) { a ^= key.charCodeAt(q); a = Math.imul(a, 16777619); }
-  return (a >>> 0) / 4294967296;
 }
 
 export const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
