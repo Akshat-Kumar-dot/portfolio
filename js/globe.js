@@ -195,7 +195,8 @@ export function createGlobe(renderer, { reduced = false } = {}) {
 
   /* ---------- rotation ---------- */
   // spinner.rotation = (tilt, spin): a card at (lat, lon) faces the viewer when tilt = lat, spin = −lon
-  let spin = 0.4, tilt = 0.12, vSpin = 0, vTilt = 0;
+  let spin = 0.4, tilt = 0.12, vSpin = 0, vTilt = 0, drift = 0;
+  const TILT = 1.4;                                          // how far it turns up or down, floating free: nearly over the poles
   let focus = null, spinT = 0, tiltT = 0;
   let rest = 0.12;                                            // the lean it drifts back to when floating free (until you turn it yourself)
 
@@ -249,14 +250,14 @@ export function createGlobe(renderer, { reduced = false } = {}) {
   function drag(dx, dy) {
     const k = focus ? 0.0032 : 0.006;
     vSpin = dx * k; vTilt = dy * k * (focus ? 1 : 0.66);
-    spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -1, focus ? 1.3 : 1);
+    spin += vSpin; tilt = THREE.MathUtils.clamp(tilt + vTilt, focus ? -1.3 : -TILT, focus ? 1.3 : TILT);
     if (!focus && dy) rest = tilt;                            // tilted it yourself: it stays that way
     dragX += dx; dragY += dy;
   }
   /* the pan control, held down: turn by (ax, ay) radians — round the poles, and over them */
   function turn(ax, ay) {
     spin += ax;
-    tilt = rest = THREE.MathUtils.clamp(tilt + ay, -1, 1);
+    tilt = rest = THREE.MathUtils.clamp(tilt + ay, -TILT, TILT);
   }
   /* back to how it floats at first: a slight forward lean, no spin of your own */
   function home() { rest = 0.12; vSpin = vTilt = 0; }
@@ -306,8 +307,11 @@ export function createGlobe(renderer, { reduced = false } = {}) {
       }
     } else if (!s.dragging) {
       vSpin *= Math.pow(0.04, dt); vTilt *= Math.pow(0.02, dt);
-      spin += (s.hovered ? 0.02 : GLOBE.spin * s.idle) * dt + vSpin + s.scrollSpin;
-      tilt = THREE.MathUtils.clamp(tilt + vTilt, -1, 1);
+      // pointing at a card, it eases to a stop — so the card stays where the pointer is (a globe that kept creeping
+      // would slide the card's edge out from under it, again and again: the globe and the pointer would wobble)
+      drift += ((s.hovered ? 0 : GLOBE.spin * s.idle) - drift) * (1 - Math.pow(0.02, dt));
+      spin += drift * dt + vSpin + s.scrollSpin;
+      tilt = THREE.MathUtils.clamp(tilt + vTilt, -TILT, TILT);
       tilt += (rest - tilt) * (1 - Math.pow(0.3, dt));      // drift back to its lean
     }
     // in focus mode the cursor tilts the globe a little, to peek at the neighbours

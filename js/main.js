@@ -93,8 +93,8 @@ const LOOK_DOWN = Math.atan2(CAM_POS.y - CAM_AT.y, CAM_POS.z - CAM_AT.z);
 let W = innerWidth, H = innerHeight, inkDpr = 1, handsBelow = 0.2, handsEdge = null, fitted = false;
 
 // the screen at its smallest (a phone with its address bar showing): the hands' wrists sit at its bottom, so they're
-// whole down to the wrist whether the bar is showing or not; below it — the strip the bar leaves when it slides
-// away — the 3D fades into the page (style.css), so there's no cut and no arm
+// whole down to the wrist whether the bar is showing or not — and when it slides away, they carry on to the edge
+// of the screen, as on a laptop (the paper behind carries on too: style.css)
 const seenProbe = document.createElement('div');
 seenProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none';
 document.body.append(seenProbe);
@@ -224,7 +224,7 @@ function setGuide(m) {
 
 /* ---------- pointer: hover, drag, click ---------- */
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(9, 9), peek = new THREE.Vector2();
-let hovered = null, dragging = false, moved = 0, lx = 0, ly = 0, ox = 0, oy = 0, axis = '';
+let hovered = null, dragging = false, moved = 0, lx = 0, ly = 0, ox = 0, oy = 0, axis = '', missFor = 0;
 const interactive = () => mode === 'free' || mode === 'focus';
 
 addEventListener('pointermove', e => {
@@ -291,8 +291,14 @@ addEventListener('keydown', e => {
   if (!interactive() || !globe || !stageInView() || e.target.closest?.('input, textarea, [contenteditable]')) return;
   const zk = { '+': 1, '=': 1, '-': -1, '_': -1 }[e.key];
   if (zk) { e.preventDefault(); zoomBy(zk * 0.25); return; }
-  const side = { ArrowLeft: -1, ArrowRight: 1 }[e.key];      // floating free, ← → turn it (↑ ↓ still scroll the page)
-  if (side && mode === 'free') { e.preventDefault(); turnQ.x -= side * 0.35; }
+  // floating free, the arrows turn it, as the pan control does (held down, they keep turning); the page still
+  // scrolls on with the wheel, a swipe, space or Page Up / Down
+  const side = { ArrowLeft: -1, ArrowRight: 1 }[e.key], updown = { ArrowUp: 1, ArrowDown: -1 }[e.key];
+  if ((side || updown) && mode === 'free') {
+    e.preventDefault();
+    const k = e.repeat ? 0.4 : 1;                            // a key held down repeats: smaller steps, a steady turn
+    if (side) turnQ.x -= side * 0.3 * k; else turnQ.y += updown * 0.22 * k;
+  }
 });
 
 const icon = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -370,11 +376,12 @@ addEventListener('keydown', e => {
    is a pause, a change of direction, or a delta well above the ones just before it.          */
 const swipe = { last: 0, dir: 0, recent: [], sum: 0, used: true, stepAt: 0 };
 addEventListener('wheel', e => {
-  if (mode !== 'focus' || !globe || !stageInView()) return;
+  if ((mode !== 'focus' && mode !== 'free') || !globe || !stageInView() || e.ctrlKey) return;
   const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1;
   const dx = e.deltaX * k, dy = e.deltaY * k;
   if (Math.abs(dx) <= Math.abs(dy)) return;                 // up and down belongs to the page
   e.preventDefault();
+  if (mode === 'free') { turnQ.x -= dx * 0.0035; return; }  // floating free, a sideways swipe turns it
   const now = performance.now(), dir = Math.sign(dx), mag = Math.abs(dx);
   const gap = now - swipe.last, peak = Math.max(0, ...swipe.recent);
   const fresh = gap > 160 || dir !== swipe.dir || (mag >= 50 && gap > 45) || (mag > peak * 1.7 && mag > 6 && now - swipe.stepAt > 150);
@@ -675,7 +682,13 @@ function frame(now) {
     setGuide(mode === 'free' || (mode === 'focus' && stageInView()) ? mode : '');
     earth.classList.toggle('on', ((mode === 'free' && !unzoom) || mode === 'focus') && stageInView());
     steer(dt, now);
-    if (interactive() && !dragging && fine) { ray.setFromCamera(mouse, camera); setHovered(stageInView() ? globe.pick(ray) : null); }
+    if (interactive() && !dragging && fine) {
+      ray.setFromCamera(mouse, camera);
+      // (a moment's grace before it lets go of a card: the pointer slipping across an edge or a gap between
+      // cards for a frame or two isn't leaving it — so the card, its label and the pointer don't flicker)
+      const hit = stageInView() ? globe.pick(ray) : null;
+      if (hit) { missFor = 0; setHovered(hit); } else if ((missFor += dt) > 0.15) setHovered(null);
+    }
     if (mode === 'focus' && globe.focus !== lastFocus && !hovered) showProject(globe.focus.k);
     lastFocus = globe.focus;
 

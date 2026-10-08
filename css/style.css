@@ -27,10 +27,11 @@ a { color:inherit; }
 
 /* the paper: a soft light in the middle, fixed while the page scrolls over it, and its grain
    (generated in js/grain.js). Both are layers of their own rather than a fixed background or a
-   blend, so phones don't have to repaint the page as it scrolls */
-body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+   blend, so phones don't have to repaint the page as it scrolls. As tall as the screen at its tallest (lvh):
+   when a phone's address bar slides away the paper carries on to the bottom, no band under it */
+body::before { content:''; position:fixed; left:0; right:0; top:0; height:100vh; height:100lvh; z-index:-1; pointer-events:none;
                background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%); }
-.grain { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.45; }   /* the paper (js/mark.js) */
+.grain { position:fixed; left:0; right:0; top:0; height:100vh; height:100lvh; z-index:0; pointer-events:none; opacity:.45; }   /* the paper (js/mark.js) */
 /* on a copy of the site (js/mark.js) */
 .copy-notice { position:fixed !important; z-index:20 !important; left:50%; bottom:14px; transform:translateX(-50%); display:block !important;
                max-width:calc(100% - 24px); padding:9px 14px; border-radius:8px; background:var(--ink); color:var(--bg-hi);
@@ -45,11 +46,6 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
 .stage.pinned { position:fixed; left:0; right:0; }            /* held on screen until the folders take its page (js/main.js) */
 
 #scene { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:pan-y; }
-/* a phone: below the screen at its smallest (where the hands' wrists are: main.js) the 3D fades into the page —
-   the strip its address bar leaves as it slides away shows no cut, and no arm */
-html:not([data-tier="full"]) #scene, html:not([data-tier="full"]) .f-shot-3d {
-  -webkit-mask-image:linear-gradient(to bottom, #000 calc(100svh - 2px), transparent calc(100svh + 34px));
-          mask-image:linear-gradient(to bottom, #000 calc(100svh - 2px), transparent calc(100svh + 34px)); }
 /* the pen line circling the card in the middle once you're inside the globe (js/scribble.js) */
 .ink { position:absolute; inset:0; z-index:2; width:100%; height:100%; display:block; pointer-events:none; }
 /* a project's video plays on the globe's cards; the element itself sits unseen in a corner */
