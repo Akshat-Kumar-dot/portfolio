@@ -33,10 +33,10 @@ import { createGlobe } from './globe.js';
 import { createGraph } from './graph.js';
 import { createFiles, graphSketch } from './files.js';
 import { createDesk } from './desk.js';
-import { initSmoothScroll, jumpTo, glideTo, slowIn } from './scroll.js';
+import { initSmoothScroll, jumpTo, glideTo, slowIn, holdTouch } from './scroll.js';
 import { createReveals } from './reveal.js';
 import * as pen from './scribble.js';
-import { PERF } from './device.js';
+import { PERF, HANDHELD } from './device.js';
 
 const params = new URLSearchParams(location.search);
 const FORCE_P = parseFloat(params.get('p'));
@@ -90,10 +90,12 @@ const CAM_AT = new THREE.Vector3(0, 0.153, -0.188);
 const GLOBE_AT = new THREE.Vector3(0, 0.126, -0.316);   // where the globe ends up
 const TO_CAM = new THREE.Vector3().subVectors(CAM_POS, GLOBE_AT).normalize();
 const LOOK_DOWN = Math.atan2(CAM_POS.y - CAM_AT.y, CAM_POS.z - CAM_AT.z);
-let W = innerWidth, H = innerHeight, inkDpr = 1, handsBelow = 0.2, handsEdge = null;
+let W = innerWidth, H = innerHeight, inkDpr = 1, handsBelow = 0.2, handsEdge = null, fitted = false;
 
 function fit() {
-  W = innerWidth; H = innerHeight;
+  const w = innerWidth, h = $('stage').clientHeight || innerHeight;   // (a phone's address bar sliding away changes nothing)
+  if (w === W && h === H && fitted) return;
+  W = w; H = h; fitted = true;
   stage.resize(W, H);
   inkDpr = Math.min(devicePixelRatio || 1, PERF.canvasDpr);
   inkCanvas.width = Math.round(W * inkDpr); inkCanvas.height = Math.round(H * inkDpr);
@@ -205,6 +207,7 @@ const GUIDE = {
 };
 let guideKey = '';
 function setGuide(m) {
+  if (HANDHELD) m = '';                                      // on a phone the screen stays clear: pinch, swipe and tap are all it takes
   if (m === guideKey) return;
   guideKey = m;
   guide.textContent = GUIDE[m] || '';
@@ -214,7 +217,7 @@ function setGuide(m) {
 
 /* ---------- pointer: hover, drag, click ---------- */
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(9, 9), peek = new THREE.Vector2();
-let hovered = null, dragging = false, moved = 0, lx = 0, ly = 0;
+let hovered = null, dragging = false, moved = 0, lx = 0, ly = 0, ox = 0, oy = 0, axis = '';
 const interactive = () => mode === 'free' || mode === 'focus';
 
 addEventListener('pointermove', e => {
@@ -225,7 +228,15 @@ addEventListener('pointermove', e => {
   const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
   moved += Math.abs(dx) + Math.abs(dy);
   if (moved > 6) {
-    if (!canvas.hasPointerCapture(e.pointerId)) canvas.setPointerCapture(e.pointerId);
+    // a finger that sets off up or down is scrolling the page (through the story, or row by row inside the globe) —
+    // it never turns the globe, nor does the page snap back when it lifts; one that sets off sideways turns the globe,
+    // and the page holds still under it
+    if (!axis) {
+      axis = e.pointerType === 'mouse' || Math.abs(e.clientX - ox) > Math.abs(e.clientY - oy) ? 'turn' : 'scroll';
+      if (axis === 'turn' && e.pointerType !== 'mouse') holdTouch(true);
+    }
+    if (axis === 'scroll') return;
+    if (!canvas.hasPointerCapture(e.pointerId)) try { canvas.setPointerCapture(e.pointerId); } catch { /* the pointer's already gone */ }
     canvas.classList.add('drag');
     // inside, a finger's drag moves along the row (up and down is the page's scroll); a mouse looks around freely
     globe.drag(dx, mode === 'focus' && e.pointerType !== 'mouse' ? 0 : dy);
@@ -237,15 +248,15 @@ canvas.addEventListener('pointerdown', e => {
     touches.set(e.pointerId, [e.clientX, e.clientY]);
     if (touches.size === 2) { if (dragging) { dragging = false; canvas.classList.remove('drag'); globe.release(); } pinchStart(); return; }
   }
-  dragging = true; moved = 0; lx = e.clientX; ly = e.clientY;
+  dragging = true; moved = 0; lx = ox = e.clientX; ly = oy = e.clientY; axis = '';
 });
-const lift1 = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+const lift1 = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (!touches.size) holdTouch(false); };
 addEventListener('pointercancel', lift1);
 addEventListener('pointerup', e => {
   lift1(e);
   if (!dragging) return;
   dragging = false; canvas.classList.remove('drag');
-  if (moved > 6) { globe.release(); keepRow(); return; }
+  if (moved > 6) { if (axis === 'turn') { globe.release(); keepRow(); } return; }   // (a scroll isn't a tap either)
   if (!hovered) return;
   if (mode === 'focus' && hovered !== globe.focus) { globe.focusCard(hovered); return; }   // an edge card: bring it to the centre
   const url = WORK[hovered.k].url;
@@ -293,8 +304,9 @@ earth.innerHTML = `
     <button data-zoom="1" aria-label="Zoom in" title="Zoom in">${icon('M12 6.5v11M6.5 12h11')}</button>
     <button data-zoom="-1" aria-label="Zoom out" title="Zoom out">${icon('M6.5 12h11')}</button>
   </div>`;
-// only where there's a mouse or a trackpad; on a phone, pinch and swipe do it, and the screen stays clear
-if (matchMedia('(any-pointer: fine)').matches) $('stage').append(earth);
+// only where there's a mouse or a trackpad; on a phone (even one that says it can take a mouse), pinch and swipe
+// do it, and the screen stays clear
+if (!HANDHELD && matchMedia('(any-pointer: fine)').matches) $('stage').append(earth);
 /* one step at once; held down, it keeps going */
 function press(b) {
   if (b.dataset.home !== undefined) { uzT = 0; turnQ.x = turnQ.y = 0; globe?.home(); return; }

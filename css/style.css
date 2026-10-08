@@ -40,7 +40,8 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
 /* The scroll track: the stage sticks while you scroll through it.
    Its height sets how long the whole sequence lasts.               */
 .track { position:relative; z-index:1; height:620vh; }   /* js/main.js sets it from the story's length */
-.stage { position:sticky; top:0; height:100vh; height:100svh; overflow:hidden; overflow:clip; }
+/* as tall as the screen at its tallest (a phone's address bar slid away), so there's never a strip under it */
+.stage { position:sticky; top:0; height:100vh; height:100lvh; overflow:hidden; overflow:clip; }
 .stage.pinned { position:fixed; left:0; right:0; }            /* held on screen until the folders take its page (js/main.js) */
 
 #scene { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:pan-y; }
@@ -154,7 +155,7 @@ body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:n
 /* while the folders' shots play (js/files.js), whatever a fling has carried into view behind them stays hidden */
 html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hidden; }
 /* fixed to the screen, not sticky: js/files.js shows it only while there's something of it to see */
-.files-stage { position:fixed; inset:0; overflow:hidden; overflow:clip; }
+.files-stage { position:fixed; left:0; right:0; top:0; height:100vh; height:100lvh; overflow:hidden; overflow:clip; }
 .folder { position:absolute; will-change:transform; }
 .f-back { position:absolute; left:0; top:0; overflow:visible; }
 .f-back path { fill:var(--f-back); }
@@ -226,7 +227,7 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
 .panel-label > span { margin-left:auto; letter-spacing:.14em; }
 .gh-side { display:flex; align-items:center; gap:18px; }
 .panel-label a { color:var(--ink); text-decoration:none; }
-.sample { color:var(--accent); border:1px solid currentColor; border-radius:999px; padding:3px 8px; font-size:9.5px; }
+.sample { display:inline-block; white-space:nowrap; color:var(--accent); border:1px solid currentColor; border-radius:999px; padding:3px 8px; font-size:9.5px; }
 .big-num { display:flex; align-items:baseline; gap:.1em; font:400 clamp(64px, 6.6vw, 120px)/.9 var(--serif); letter-spacing:-.03em; }
 .big-num .u { margin-right:.7em; font:500 12px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--muted); }
 
@@ -470,6 +471,7 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
   .mu-ctrl button { width:36px; height:36px; } .mu-ctrl .mu-play { width:44px; height:44px; }
   .mu-list { grid-column:1 / -1; margin-top:16px; }
   .gh-map { overflow-x:auto; scrollbar-width:none; }
+  .gh-side { flex-wrap:wrap; justify-content:flex-end; row-gap:10px; }   /* the key, and under it the source, when they don't fit side by side */
   .gh-map svg { width:680px; }
   .gh-stats { grid-template-columns:1fr 1fr; row-gap:26px; }
   .gh-recent li { grid-template-columns:1fr auto; } .gh-recent li span:last-child { display:none; }

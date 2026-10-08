@@ -103,11 +103,15 @@ export function createTyping(el, { wpm, accuracy, test, onResult }) {
     onResult?.(result.querySelector('.ty-you'));
   }
 
-  box.addEventListener('pointerdown', e => { if (e.target !== input) { e.preventDefault(); input.focus(); } });
+  // a click or a tap on the sentence starts typing — not a finger that's scrolling past it — and on a phone,
+  // scrolling on (or tapping anywhere else) puts the keyboard away
+  box.addEventListener('pointerdown', e => { if (e.target !== input && e.pointerType === 'mouse') { e.preventDefault(); input.focus(); } });
+  box.addEventListener('click', e => { if (e.target !== input && document.activeElement !== input) input.focus(); });
+  addEventListener('touchmove', () => { if (document.activeElement === input) input.blur(); }, { passive: true });
   input.addEventListener('focus', () => { box.classList.add('focus'); });
   input.addEventListener('blur', () => {
     box.classList.remove('focus');
-    if (t0 && !done) hint.textContent = 'Click to carry on';
+    if (t0 && !done) hint.textContent = TAP + ' to carry on';
   });
   el.querySelector('.ty-again').addEventListener('click', () => { load(); input.focus(); });
 

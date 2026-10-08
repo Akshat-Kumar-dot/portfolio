@@ -127,7 +127,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
   let W = 0, H = 0, T = 26, geo = [], s0 = 1, s1 = 1, STEP = 1, OPEN = 1, L = 1, CLOSE = 0, PRE = 0, BUF = 0, LAND = 0, SHIFT = 0, shotOn = false;
   function fit() {
     if (!root.clientWidth || !innerHeight) return;            // not laid out yet (a tab opened in the background)
-    W = root.clientWidth; H = innerHeight;
+    W = root.clientWidth; H = stage.clientHeight || innerHeight;   // the screen at its tallest, as the 3D (style.css)
     STEP = H * stepVh / 100; OPEN = H * openVh / 100;
     CLOSE = H * closeVh / 100; PRE = CLOSE;
     L = PRE + (target - holder) * STEP + OPEN;

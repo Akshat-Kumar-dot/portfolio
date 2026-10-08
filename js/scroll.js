@@ -60,6 +60,15 @@ let lenis = null;
 const stops = [], zones = [];
 let landing = null, restFrom = -1e9, lastInput = 'wheel', gliding = false;
 let pinching = false;                                        // two fingers on the screen: a pinch (main.js zooms the globe), not a scroll
+let held = false, nativeY = null;
+
+/* a finger turning the globe (main.js): the page holds still under it until it lifts */
+export function holdTouch(on) { held = on; }
+/* past the end of the story — the top of Behind the scenes, and `margin` screens more */
+function pastStory(y, margin = 0) {
+  const ys = where().stops;
+  return ys.length > 0 && y >= Math.max(...ys) - 2 + innerHeight * margin;
+}
 
 /* getY() → a scroll position the page comes to rest on, on the way down */
 export function landOn(getY) { stops.push(getY); }
@@ -91,6 +100,10 @@ export function initSmoothScroll({ reduced = false } = {}) {
       if (e.defaultPrevented) return false;                   // taken by the page's own handling
       if (e.target?.closest?.('.notes.active')) return false; // the notes graph, being zoomed and panned
       const touch = e.type.startsWith('touch');
+      // past the story a phone scrolls the way it always does — its own scrolling, with its own momentum, smooth
+      // however busy the page is; the story keeps the finger in step with it (the zones). Decided as each touch begins
+      if (HANDHELD && e.type === 'touchstart' && e.touches?.length === 1) { lenis.options.syncTouch = !pastStory(lenis.animatedScroll, 0.25); held = false; }
+      if (touch && !lenis.options.syncTouch) return true;
       // a second finger down makes it a pinch — and it stays one until every finger is off, so the page
       // neither scrolls under the pinch nor jumps when one finger lifts before the other
       if (e.type === 'touchstart' && e.touches?.length === 1) pinching = false;   // a fresh touch (should a lift have gone missing)
@@ -100,6 +113,7 @@ export function initSmoothScroll({ reduced = false } = {}) {
         if (e.type === 'touchmove' && e.cancelable) e.preventDefault();   // nor may the browser scroll it
         return false;
       }
+      if (touch && held) { if (e.type === 'touchmove' && e.cancelable) e.preventDefault(); return false; }
       if (touch && e.type === 'touchmove' && Math.abs(data.deltaX) > Math.abs(data.deltaY)) return false;   // a sideways swipe isn't a scroll
       lastInput = touch ? 'touch' : 'wheel'; gliding = false;
       if (e.type === 'wheel') { limitFlick(data); rest(data); govern(data, LERP); }
@@ -110,9 +124,23 @@ export function initSmoothScroll({ reduced = false } = {}) {
       return false;
     }
   });
-  lenis.on('scroll', tell);             // the frame Lenis moves the page in (the native event comes a frame later)
+  // the frame Lenis moves the page in (and it passes on the browser's own scrolling too) — so the page's own scroll
+  // listener would only do it all again a frame later
+  lenis.on('scroll', tell);
+  removeEventListener('scroll', tell);
   lenis.on('scroll', () => {
     if (landing !== null && Math.abs(lenis.animatedScroll - landing) < 1.5) { landing = null; restFrom = performance.now(); bank = 0; }   // arrived: the rest begins
+    // the phone's own scrolling, flung back up past the end of the story: it stops there, as a landing place
+    // would — the story is scrolled the story's way (the next touch takes it from there)
+    if (lenis.isScrolling === 'native' && HANDHELD) {
+      const y = lenis.animatedScroll, Y = Math.max(...where().stops);
+      if (nativeY !== null && nativeY >= Y - 2 && y < Y - 2 && !lenis.isStopped) {
+        lenis.stop();                                    // (for a moment: the only way to end a fling)
+        scrollTo({ top: Y, behavior: 'instant' });
+        setTimeout(() => { lenis.options.syncTouch = true; lenis.start(); }, 80);   // (long enough that the fling is over)
+      }
+      nativeY = y;
+    } else nativeY = null;
     pace();
   });
   return lenis;
@@ -185,6 +213,7 @@ function govern(data, r) {
    ahead of it (a fling coasting on, a fast scroll coming up to a zone), take the rest back into the bank */
 function pace() {
   const now = performance.now(), dt = Math.min(0.1, (now - paceAt) / 1000); paceAt = now;
+  if (lenis.isScrolling === 'native') { bank = 0; return; }   // the browser's own scrolling: not ours to pace
   if (gliding || !bankDir) return;
   if (lenis.isTouching) rate = 1; else if (lastInput === 'touch') rate = TOUCH_LERP;
   const y = lenis.animatedScroll, t = lenis.targetScroll, dir = bankDir, ahead = (t - y) * dir;
@@ -241,7 +270,7 @@ function rest(data) {
 let allowance = 0, lastAt = -1e9, lastDir = 0;
 function limitFlick(data) {
   const d = data.deltaY;
-  if (!d) return;
+  if (!d || pastStory(lenis.animatedScroll)) return;          // past the story there's nothing to fly past: scroll as you like
   const now = performance.now(), H = innerHeight, full = FLICK.free * H, dir = Math.sign(d);
   if (now - lastAt > FLICK.pause || dir !== lastDir) allowance = full;               // a new swipe
   else allowance = Math.min(full, allowance + (now - lastAt) / 1000 * FLICK.rate * H);
