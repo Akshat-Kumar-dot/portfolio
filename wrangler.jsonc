@@ -1,0 +1,9 @@
+// Cloudflare Workers: the site is static files only — the build (see the Cloudflare dashboard) copies
+// index.html, css/, js/ and assets/ into dist/, and this publishes that folder. No Worker script needed.
+{
+  "name": "portfolio",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
