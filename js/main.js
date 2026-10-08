@@ -92,6 +92,12 @@ const TO_CAM = new THREE.Vector3().subVectors(CAM_POS, GLOBE_AT).normalize();
 const LOOK_DOWN = Math.atan2(CAM_POS.y - CAM_AT.y, CAM_POS.z - CAM_AT.z);
 let W = innerWidth, H = innerHeight, inkDpr = 1, handsBelow = 0.2, handsEdge = null, fitted = false;
 
+// the screen at its smallest (a phone with its address bar showing): the hands' wrists sit at its bottom, so they're
+// whole down to the wrist whether the bar is showing or not; below it — the strip the bar leaves when it slides
+// away — the 3D fades into the page (style.css), so there's no cut and no arm
+const seenProbe = document.createElement('div');
+seenProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none';
+document.body.append(seenProbe);
 function fit() {
   const w = innerWidth, h = $('stage').clientHeight || innerHeight;   // (a phone's address bar sliding away changes nothing)
   if (w === W && h === H && fitted) return;
@@ -106,7 +112,8 @@ function fit() {
   // how far down the view reaches at depth z. A tall screen (a phone) sees much further down than a
   // wide one — far enough to show the forearms — so there the hands are held with their wrists at
   // the bottom edge (hands.js): palms only, as on a laptop
-  const slope = Math.tan(LOOK_DOWN + camera.fov * Math.PI / 360);
+  const seen = Math.min(H, seenProbe.offsetHeight || H), across = Math.tan(camera.fov * Math.PI / 360);
+  const slope = Math.tan(LOOK_DOWN + Math.atan((2 * seen / H - 1) * across));   // (the bottom of what's always on screen)
   const edge = z => CAM_POS.y - slope * (CAM_POS.z - z);
   handsEdge = camera.fov > 26.01 ? edge : null;
   // before they rise, the hands wait just below the bottom of the view — the fingertips (~0.19 m up) too
