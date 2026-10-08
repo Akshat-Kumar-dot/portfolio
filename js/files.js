@@ -21,6 +21,7 @@
    ============================================================ */
 import { $, clamp, lerp, sm, eio, rng } from './utils.js';
 import { onScroll, landOn } from './scroll.js';
+import { box, relayout } from './perf.js';
 
 const INSET = 14;                             // the sheet inside its folder, px from each side
 
@@ -73,7 +74,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
     <div class="folder${i === target ? ' target' : ''}${i === holder ? ' holder' : ''}">
       <svg class="f-back" aria-hidden="true"><path/></svg>
       <p class="f-tab"><span>${esc(f.n)}</span>${esc(f.name)}</p>
-      <div class="f-sheet">${i === target ? '<div class="f-page"></div>'
+      <div class="f-sheet">${i === target ? '<div class="f-paper"></div><div class="f-page"></div>'
         : `<div class="f-note"><p class="f-n">(${esc(f.n)})</p><p class="f-name">${esc(f.name)}</p><p class="f-line">${esc(f.line || '')}</p><div class="f-media"></div></div>`}${
         i === holder ? '<div class="f-shot" aria-hidden="true"><div class="f-shot-paper"></div><div class="f-shot-grain"></div><canvas class="f-shot-3d"></canvas></div>' : ''}</div>
       <div class="f-front"></div>
@@ -91,7 +92,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
     sheet: el.querySelector('.f-sheet'), front: el.querySelector('.f-front')
   }));
   folders.forEach((f, i) => { if (f.media) els[i].sheet.querySelector('.f-media')?.append(f.media); });
-  const page = stage.querySelector('.f-page'), tf = els[target], hf = els[holder];
+  const page = stage.querySelector('.f-page'), paper = stage.querySelector('.f-paper'), tf = els[target], hf = els[holder];
   const shot = stage.querySelector('.f-shot'), shotGrain = shot?.querySelector('.f-shot-grain'), shotCanvas = shot?.querySelector('.f-shot-3d');
   if (shot) {                                                // the globe page's top bar, as it is on that page
     const top = document.querySelector('.top')?.cloneNode(true);
@@ -114,6 +115,7 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
   function handOver(toSlot) {
     out = toSlot;
     (toSlot ? slot : page).append(desk);
+    relayout();                                              // the page has moved: what's on it is measured again (js/perf.js)
     slot.classList.toggle('empty', !toSlot);
     stage.style.visibility = out || before ? 'hidden' : '';
     root.classList.toggle('filing', !out && !before);       // while it plays, what's after it stays out of sight (style.css)
@@ -186,31 +188,22 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
        3. that page opens, heading for wherever its own place is on screen right then, and is handed
           over exactly there (o: 0 → 1) */
 
-  let sw = 0, o = 0, shown = -1, last = performance.now(), lastS = null, easing = false;
+  let sw = 0, o = 0, shown = -1;
 
-  function place(now = performance.now()) {
-    const dt = Math.min((now - last) / 1000, 0.1); last = now;
-    const top = section.getBoundingClientRect().top, s = -top;          // how far into the section you've scrolled
+  function place() {
+    const s = scrollY - box(section).top;                    // how far into the section you've scrolled (measured once per layout)
     const c = shot && story ? 1 - clamp((story.p - closeAt[0]) / (closeAt[1] - closeAt[0]), 0, 1) : 0;   // 1 → 0
     const wasBefore = before;
     before = !!shot && c >= 1;                               // still the globe's page: nothing of the stack to show yet
     const swAim = clamp((s - CLOSE) / STEP, 0, 1), oAim = clamp((s - CLOSE - STEP) / OPEN, 0, 1);
-    lastS = s;
     sw = swAim; o = oAim;                                     // exactly where the scroll is: the smooth scroll is the only easing
-    easing = c > 0 && c < 1;
     // the page goes to its place once it has opened all the way there (the last of it is too small to see)
     const wantOut = s >= L - 0.5 && o >= 0.98;
     if (wantOut !== out || before !== wasBefore) handOver(wantOut);
     if (!out && !before) draw(o, c, sw, L - s);
   }
-  onScroll(place);
-  landOn(() => slot.offsetTop);                              // opened: the page comes to rest on its top for a beat
-  // every frame while any of it is under way, or near enough that the globe's pace may move it on
-  (function loop(now) {
-    requestAnimationFrame(loop);
-    const near = lastS !== null && lastS > -H * 3 && lastS < L + BUF + H;
-    if (easing || near) place(now); else last = now;
-  })(performance.now());
+  onScroll(place);                                           // it all follows the scroll: placed whenever the page moves
+  landOn(() => box(slot).top);                               // opened: the page comes to rest on its top for a beat
 
   /* how far along a sheet is in becoming its page (t: 0 in its folder → 1 the page): the sheet slides a
      little further out, then grows into the page, while the stack slides away beneath it, all together
@@ -244,25 +237,29 @@ export function createFiles({ folders, target, cue, stepVh = 30, openVh = 55, ho
         f.sheet.style.transform = `translateY(${(-up).toFixed(1)}px)`;
         if (i === target || i === holder) {
           for (const x of [f.back, f.tab, f.front]) x.style.transform = '';
-          Object.assign(f.sheet.style, { borderRadius: '', boxShadow: '', background: '' });
+          Object.assign(f.sheet.style, { borderRadius: '', boxShadow: '' });
+          if (i === target) paper.style.opacity = '';
         }
         return;
       }
       // the rest of this folder drops away, and the sheet grows until the page in it is full size, its
       // top-left at the screen's — where the page itself is, either side of the hand-over
       for (const x of [f.back, f.tab, f.front]) x.style.transform = `translateY(${(E.drop * H * 1.1).toFixed(1)}px)`;
-      const x0 = geo[i].x + f.sheet.offsetLeft, y0 = geo[i].y + y + f.sheet.offsetTop;
+      const x0 = geo[i].x + INSET, y0 = geo[i].y + y + T + 5;   // where the sheet sits in its folder (style.css), not measured mid-frame
       const from = y0 - LAND - E.lead * H * 0.06;
       // Behind the scenes heads for its page's place, wherever that is on screen now (placeTop) — so whenever
       // it gets there the page is handed over without a jump; the globe's page stood still on the screen
       const top = lerp(from, i === target ? placeTop : 0, E.grow);
       const tx = -x0 * E.grow, ty = top - y0, sc = 1 + (1 / s - 1) * E.grow;
       f.sheet.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${sc.toFixed(5)})`;
-      const r = (6 * (1 - E.grow)).toFixed(2);
-      f.sheet.style.borderRadius = i === holder && shotOn ? `${r}px` : `${r}px ${r}px 0 0`;   // the globe's page shows its foot as it closes
+      // (the corners in whole pixels, so they're redrawn a few times as it opens, not every frame)
+      const r = Math.round(6 * (1 - E.grow));
+      const radius = i === holder && shotOn ? `${r}px` : `${r}px ${r}px 0 0`;   // the globe's page shows its foot as it closes
+      if (f.sheet.style.borderRadius !== radius) f.sheet.style.borderRadius = radius;
       f.sheet.style.boxShadow = E.grow > 0.9 ? 'none' : '';
-      // at the very end the paper thins away, leaving the page on the site's own background — as it is out of the folder
-      f.sheet.style.background = i === target ? `rgba(251,248,241,${(1 - sm([0.6, 1], E.grow)).toFixed(3)})` : '';
+      // at the very end the paper thins away, leaving the page on the site's own background — as it is out of the
+      // folder. (It's a layer of its own, faded by opacity alone, so the page on it isn't drawn again every frame)
+      if (i === target) paper.style.opacity = (1 - sm([0.6, 1], E.grow)).toFixed(3);
     });
 
     // the front cover reads out the folder that's up, and at the page, how to open it

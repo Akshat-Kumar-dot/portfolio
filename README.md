@@ -62,6 +62,7 @@ portfolio/
 │   ├── main.js         scroll choreography: hands → globe → camera, plus hover and drag
 │   ├── stage.js        renderer, camera, lights, fog
 │   ├── device.js       how much the device can take: the full version, or lighter ones for phones
+│   ├── perf.js         what keeps it smooth: layout measured once, shadows where they show, how sharp the 3D is drawn
 │   ├── mark.js         whose site this is: on the cards, in the metadata; and copies flagged
 │   ├── hands.js        the two hands: loading, posing, open/close, forearms
 │   ├── skin.js         procedural skin shader: nails, creases, palm lines, veins, pores
@@ -201,9 +202,17 @@ The top of the page is just the section links, centred (your name is already big
 
 Everywhere, work nobody would see is skipped: on the landing page no 3D is drawn at all (the hands are still out of sight below), the hands aren't drawn or shadowed once you're inside the globe, and the record player only animates while it's turning. The page's paper background is a layer of its own, so phones don't repaint it while scrolling.
 
-On phones, `govern()` in `js/main.js` also watches the frame rate: below about 42 frames a second the 3D is drawn at fewer pixels, a step at a time (down to half), and it steps back up once the phone keeps a steady 60 again. A computer always draws at full quality — its frame rate can be capped for reasons that have nothing to do with its power (Chrome's Energy Saver holds pages to 30 fps on battery), so that's no reason to draw fewer pixels.
+How sharp the 3D is drawn is `pixelRatio()` in `js/perf.js`. A computer draws above its screen's own pixels (`supersample`: half again, for edges as clean as print) with the project covers at one and a half times their size; should it struggle (below about 42 frames a second), it eases down a step at a time to the screen's own pixels, and no further. A phone draws at its screen's own and stays there. Only a budget phone (`low`) is drawn at fewer pixels when it can't keep up.
 
 Add `?tier=low` (or `phone`, `full`) to the address to try a tier on your computer; the numbers for each are the `PERF` table in `js/device.js`.
+
+### Keeping it smooth
+Everything that keeps the frames quick is gathered in `js/perf.js`, worked out by stepping through the whole story in a phone-sized window, part by part, and timing every frame — the script, and the 3D to the moment the graphics chip had finished it (measured on a laptop's built-in graphics, about a phone's):
+
+- **No measuring mid-frame.** A frame that restyles the page and then asks where something is makes the browser lay the whole page out again, there and then — and the scrolling used to ask several times a frame. `box(el)` keeps where an element sits until the page changes size; the folders, the reveals and the story all read from it, and the script's share of a frame fell to about a third.
+- **Shadows only where they show.** The globe's cards cast a shadow only while the globe is low in the hands (by the time it's 40% risen not a pixel of it reaches them — compared picture against picture), and the hands' own shadow is cast by a lighter copy of each hand (a quarter of the triangles; the shadow it casts differs from the full hand's by a few levels of brightness in a few dozen pixels). The hands themselves keep their full detail: a lighter hand would show.
+- **Nothing drawn that isn't seen.** No 3D on the landing page; the pen's canvases are taken out of the way while they're empty; the landing's scroll hint stops once it's faded; cards at rest aren't touched every frame.
+- **Behind the scenes opening out of its folder** doesn't make the browser redraw the page every frame: its paper fades on a layer of its own, its corners round in a few whole-pixel steps, and its panels aren't restyled until it's out (they're shown whole meanwhile). The folders follow the scroll alone, not a second loop as well.
 
 ### Colours and type
 CSS variables at the top of `css/style.css` (`--bg`, `--ink`, `--muted`, `--accent`, fonts).

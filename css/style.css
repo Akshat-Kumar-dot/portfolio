@@ -166,7 +166,9 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
 .f-sheet { position:absolute; left:14px; right:14px; top:calc(var(--tab) + 5px); bottom:0; overflow:hidden; overflow:clip;
            border-radius:6px 6px 0 0; background:var(--mark, none) var(--bg-hi); transform-origin:0 0; will-change:transform;
            box-shadow:0 -1px 0 rgba(29,27,23,.05), 0 10px 26px -14px rgba(29,27,23,.4); }
-.target .f-sheet { bottom:auto; }
+.target .f-sheet { bottom:auto; background:none; }
+/* Behind the scenes' paper, a layer of its own: it fades as the page opens out (js/files.js) */
+.f-paper { position:absolute; inset:0; background:var(--mark, none) var(--bg-hi); pointer-events:none; will-change:opacity; }
 .f-front { position:absolute; left:0; right:0; bottom:0; top:calc(var(--tab) + var(--peek)); border-radius:10px 10px 0 0;
            background:var(--f-front); box-shadow:inset 0 1px 0 rgba(255,255,255,.16); }
 .f-page { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; }

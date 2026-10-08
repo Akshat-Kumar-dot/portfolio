@@ -202,13 +202,20 @@ export function createHands(scene) {
     let mesh = null;
     model.traverse(o => { if (o.isSkinnedMesh) mesh = o; });
 
-    mesh.geometry = subdivideSkinned(mesh.geometry, Math.min(HAND.subdivisions, PERF.subdiv));   // phones: one step smoother, not two
+    const plain = mesh.geometry, steps = Math.min(HAND.subdivisions, PERF.subdiv);
+    mesh.geometry = subdivideSkinned(plain, steps);   // phones: one step smoother, not two
     const chains = chainsOf(model);
     rig = measureRig(mesh.geometry, chains);
     const mats = createSkinMaterials(rig, HAND.tones);
     mesh.material = mats.hand;
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.frustumCulled = false;
+    // its shadow is cast by a lighter copy of it — the same skeleton, a step less smoothing (a quarter of the
+    // triangles), which only the shadow pass ever sees (js/perf.js): the same shadow, for far less work
+    const caster = new THREE.SkinnedMesh(subdivideSkinned(plain, Math.max(0, steps - 1)), new THREE.MeshBasicMaterial());
+    caster.bind(mesh.skeleton, mesh.bindMatrix);
+    caster.castShadow = true; caster.frustumCulled = false; caster.visible = false; caster.name = 'shadowCaster';
+    mesh.add(caster);
     const arm = new THREE.Mesh(forearmGeometry(mesh.geometry), mats.arm);
     arm.receiveShadow = true;
     model.add(arm);
@@ -255,5 +262,7 @@ export function createHands(scene) {
     return pair.localToWorld(cup);
   }
 
-  return { update, ready, pair, get rig() { return rig; }, POSE, hands };
+  /* each hand, and the lighter copy of it that casts its shadow (after ready) */
+  const casters = () => { const out = []; pair.traverse(o => { if (o.name === 'shadowCaster') out.push({ shown: o.parent, caster: o }); }); return out; };
+  return { update, ready, pair, casters, get rig() { return rig; }, POSE, hands };
 }

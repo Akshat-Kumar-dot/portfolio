@@ -320,14 +320,24 @@ export function createGlobe(renderer, { reduced = false } = {}) {
 
     for (const c of cards) {
       const target = c === s.hovered && !focus ? 1 : 0;
+      if (!target && !c.hover) continue;                     // at rest and staying so: nothing to do (most of them, most frames)
       c.hover += (target - c.hover) * (1 - Math.pow(0.0008, dt));
+      if (!target && c.hover < 1e-3) c.hover = 0;
       c.mesh.position.copy(c.dir).multiplyScalar(1 + c.hover * 0.07);
       c.mesh.scale.setScalar(1 + c.hover * 0.12);
       c.mat.emissiveIntensity = 0.2 + c.hover * 0.22;
     }
   }
 
-  return { group, cards, rows, update, pick, drag, release, turn, home, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos,
+  /* whether the cards (and the poles' medallions) cast shadows — only while the globe is low in the hands do they reach them */
+  let casting = true;
+  function castShadows(on) {
+    if (on === casting) return;
+    casting = on;
+    spinner.traverse(o => { if (o.isMesh) o.castShadow = on; });
+  }
+
+  return { group, cards, rows, update, pick, drag, release, turn, home, setFocus, stepFocus, aimRow, focusCard, setPlaying, videos, castShadows,
            get focus() { return focus; },
            /* the focused card has arrived in the middle (not still swinging in) */
            get settled() { return !!focus && Math.abs(wrapAngle(spinT - spin)) < 0.02 && Math.abs(tiltT - tilt) < 0.02; } };

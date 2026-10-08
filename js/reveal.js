@@ -8,24 +8,26 @@
    js/desk.js.) Nothing moves for visitors who ask for reduced motion.
    ============================================================ */
 import { onScroll } from './scroll.js';
+import { box } from './perf.js';
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* how far into view each element has come — 0 with its top `from` of the way down the screen, 1 once
-   it's a further `span` of a screen up — kept in the CSS variable `name`, as the page scrolls */
-export function scrub(els, name, from, span) {
+   it's a further `span` of a screen up — kept in the CSS variable `name`, as the page scrolls. Where they
+   are is measured once per layout (js/perf.js), never mid-frame; `live()` false: they're somewhere else for
+   now (Behind the scenes in its folder) — shown whole, and left alone */
+export function scrub(els, name, from, span, live = () => true) {
   const last = new Map();
   function set() {
-    const H = innerHeight;
-    const tops = els.map(el => el.getBoundingClientRect().top);   // all measured, then all set: one layout
-    els.forEach((el, k) => {
-      const v = Math.min(1, Math.max(0, (H * from - tops[k]) / (H * span)));
+    const H = innerHeight, on = live();
+    els.forEach(el => {
+      const v = on ? Math.min(1, Math.max(0, (H * from - (box(el).top - scrollY)) / (H * span))) : 1;
       if (Math.abs(v - (last.get(el) ?? -1)) < 0.002) return;
       last.set(el, v);
       el.style.setProperty(name, v.toFixed(3));
     });
   }
-  onScroll(set);
+  onScroll(set, true);                                       // (after the folders have moved Behind the scenes, if they have)
   addEventListener('resize', set);
   set();
   return set;

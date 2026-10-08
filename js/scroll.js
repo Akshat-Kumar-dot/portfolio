@@ -77,11 +77,12 @@ export function landOn(getY) { stops.push(getY); }
    then travels at that speed while you keep scrolling. whole: once you're into it, it plays through */
 export function slowIn(range, vhPerSec, carry = 0.35, whole = false) { zones.push({ range, v: vhPerSec, carry, whole }); }
 
-const listeners = [];
+const listeners = [], after = [];
 /* call fn whenever the page scrolls, in step with the frame the scroll is drawn in —
-   for anything that has to line up exactly with the page as it moves */
-export function onScroll(fn) { listeners.push(fn); }
-const tell = () => { for (const fn of listeners) fn(); };
+   for anything that has to line up exactly with the page as it moves. late: after everything else has moved
+   (for what reads where things now are: the reveals, once the folders have put Behind the scenes in its place) */
+export function onScroll(fn, late = false) { (late ? after : listeners).push(fn); }
+const tell = () => { for (const fn of listeners) fn(); for (const fn of after) fn(); };
 addEventListener('scroll', tell, { passive: true });
 
 export function initSmoothScroll({ reduced = false } = {}) {

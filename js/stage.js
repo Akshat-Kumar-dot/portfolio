@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { PERF } from './device.js';
+import { pixelRatio } from './perf.js';
 
 export function createStage(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: PERF.aa, alpha: true, powerPreference: 'high-performance' });
@@ -40,7 +41,7 @@ export function createStage(canvas) {
   scene.add(key, key.target, rim, inner);
 
   let W = 1, H = 1, quality = 1;
-  const ratio = () => Math.max(Math.min(devicePixelRatio, PERF.dpr) * quality, Math.min(devicePixelRatio, 1));
+  const ratio = () => pixelRatio(quality);                  // (js/perf.js: never below the screen's own on a computer or a phone)
   function resize(w, h) {
     W = w; H = h;
     renderer.setPixelRatio(ratio());

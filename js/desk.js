@@ -28,6 +28,7 @@ export function createDesk({ desk, reduced }) {
   let dpr = 1;
   const sizeInk = () => { dpr = Math.min(devicePixelRatio || 1, PERF.canvasDpr); ink.width = innerWidth * dpr; ink.height = innerHeight * dpr; };
   sizeInk(); addEventListener('resize', sizeInk);
+  ink.style.visibility = 'hidden';                           // nothing on it yet
   const loops = new Map();                                   // element → { pts, on, off, want }
   let seed = 100;
   function circle(el, want = true) {
@@ -62,7 +63,7 @@ export function createDesk({ desk, reduced }) {
 
   // each panel rises into place as it comes up the screen, its charts filling in with it (style.css) — with
   // the scroll, both ways, never by itself
-  if (!reduced) scrub([...page.querySelectorAll('.panel')], '--in', 1, 0.35);
+  if (!reduced) scrub([...page.querySelectorAll('.panel')], '--in', 1, 0.35, () => page.parentElement?.id === 'deskSlot');
 
   /* ---------- drawing the pen ---------- */
   let running = false, last = 0;
@@ -80,6 +81,7 @@ export function createDesk({ desk, reduced }) {
       const cx = r.left + r.width / 2, cy = r.top + r.height / 2, e = t => t * t * (3 - 2 * t);
       pen.draw(ctx, l.pts, (u, v) => [(cx + u * a) * dpr, (cy + v * b) * dpr], e(l.off), e(l.on), 1.9 * dpr);
     }
+    ink.style.visibility = loops.size ? '' : 'hidden';        // (empty, it's out of the way: one less layer over the screen to blend)
     // keep going while a loop is still being drawn or rubbed out; scrolling wakes it to follow along
     if ([...loops.values()].some(l => !l.want || l.on < 1 || l.off > 0)) requestAnimationFrame(draw); else running = false;
   }

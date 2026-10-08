@@ -37,6 +37,7 @@ import { initSmoothScroll, jumpTo, glideTo, slowIn, holdTouch } from './scroll.j
 import { createReveals } from './reveal.js';
 import * as pen from './scribble.js';
 import { PERF, HANDHELD } from './device.js';
+import { box, createGovernor, castFromCopies, CARD_SHADOW_UNTIL } from './perf.js';
 
 const params = new URLSearchParams(location.search);
 const FORCE_P = parseFloat(params.get('p'));
@@ -52,6 +53,7 @@ const reduced = prefersReducedMotion(), fine = hasFinePointer();
 const canvas = $('scene'), track = $('track'), hint = $('hint'), guide = $('guide'), pill = $('pill'), hero = $('hero');
 const readout = $('readout'), roIdx = $('roIdx'), roTitle = $('roTitle'), roMeta = $('roMeta');
 const inkCanvas = $('ink'), inkCtx = inkCanvas.getContext('2d');
+inkCanvas.style.visibility = 'hidden';                     // nothing on it yet (drawCircle shows it while it holds a loop)
 createMark($('grain'));                                     // the paper, its grain, and whose site this is (js/mark.js)
 track.style.height = (STORY_VH + 100) + 'vh';               // the story's length, plus the screen it's seen through
 // the folders' section starts where the globe's page closes into its folder, so their stage is there to take it
@@ -164,7 +166,7 @@ function foldNotes(c) {
 createDesk({ desk: DESK, reduced });
 const workThumbs = Object.assign(document.createElement('div'), { className: 'f-thumbs' });
 const firstSentence = s => (String(s).match(/^.*?[.!?](?=\s|$)/) || [s])[0];
-const story = { p: 0 };                                     // the globe's progress (set each frame), for the folders
+const story = { get p() { return scrollTarget(); } };     // the globe's progress, for the folders — read where the page is now
 const files = createFiles({
   cue: FILES.cue, stepVh: FILES.stepVh, openVh: FILES.openVh, reduced, target: 2, holder: 1,
   closeVh: (SCROLL.shrink[1] - SCROLL.shrink[0]) * STORY_VH, story, closeAt: SCROLL.shrink,
@@ -349,15 +351,16 @@ earth.addEventListener('pointerdown', e => {
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) earth.addEventListener(ev, () => { held = null; });
 earth.addEventListener('click', e => { const b = e.target.closest('button'); if (b && e.detail === 0 && globe) press(b); });   // from the keyboard
 
-const stageInView = () => scrollY < track.offsetTop + track.offsetHeight - innerHeight * 0.5;
+const trackEnd = () => box(track).top + box(track).height;    // where the globe's scroll ends, in the page
+const stageInView = () => scrollY < trackEnd() - innerHeight * 0.5;
 
 /* ---------- inside the globe ----------
    Scrolling walks up and down the globe, one row per stretch of scroll (see the frame loop).
    It never holds on to the scroll: past the bottom row you're simply on to the folders, past
    the top you zoom back out. Along a row: a sideways swipe, a drag, or ← →; ↑ ↓ scroll a row. */
-const FREE_Y = () => (SCROLL.lift[1] + SCROLL.zoom[0]) / 2 * (track.offsetHeight - innerHeight);   // the floating globe
+const FREE_Y = () => (SCROLL.lift[1] + SCROLL.zoom[0]) / 2 * (box(track).height - innerHeight);   // the floating globe
 const ROWS = BROWSE.from - BROWSE.to + 1;
-const rowY = row => (SCROLL.browse[0] + (BROWSE.from - row + 0.5) / ROWS * (SCROLL.browse[1] - SCROLL.browse[0])) * (track.offsetHeight - innerHeight);
+const rowY = row => (SCROLL.browse[0] + (BROWSE.from - row + 0.5) / ROWS * (SCROLL.browse[1] - SCROLL.browse[0])) * (box(track).height - innerHeight);
 let bandRow = null;                                         // the row the scroll position has walked to
 
 /* you've turned to another row yourself (a drag, the pan control): the scroll comes along to that
@@ -378,7 +381,7 @@ addEventListener('keydown', e => {
   if (!up || bandRow === null) return;
   e.preventDefault();
   const row = bandRow + up;
-  glideTo(row > BROWSE.from ? FREE_Y() : row < BROWSE.to ? track.offsetTop + track.offsetHeight - innerHeight : rowY(row));
+  glideTo(row > BROWSE.from ? FREE_Y() : row < BROWSE.to ? trackEnd() - innerHeight : rowY(row));
 });
 
 /* a sideways swipe moves one card along the row. Telling one swipe from the next: a trackpad
@@ -454,6 +457,7 @@ function drawCircle(dt) {
   if (!circle.card && !inkDirty) return;
   inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
   inkDirty = false;
+  inkCanvas.style.visibility = circle.card ? '' : 'hidden';   // (empty, it's out of the way: one less layer over the screen to blend)
   if (!circle.card) return;
   const r = cardOnScreen(circle.card), a = r.a * 1.1, b = r.b * 1.17;
   const ease = t => t * t * (3 - 2 * t);
@@ -465,43 +469,24 @@ function drawCircle(dt) {
 /* ---------- scroll → progress ---------- */
 function scrollTarget() {
   if (Number.isFinite(FORCE_P)) return clamp(FORCE_P, 0, 1);
-  const max = track.offsetHeight - innerHeight;
+  const max = box(track).height - innerHeight;              // (measured once per layout, not every frame: js/perf.js)
   return max > 0 ? clamp(scrollY / max, 0, 1) : 1;
 }
 
 /* the story's speed zones (SCROLL.pace, and the folders' FILES.pace): over those stretches the scroll itself
    is held to a pace you can follow, however hard you scroll (js/scroll.js) — everything still just follows it */
-const storyPx = f => f * (track.offsetHeight - innerHeight);
+const storyPx = f => f * (box(track).height - innerHeight);
 // (on a phone a swipe covers far less than a turn of the wheel, so the opening — the dot falling into the hands,
 // the globe rising out of them — goes quicker there: fewer swipes, and less of a wait)
 for (const [a, b, v, carry, whole] of SCROLL.pace) {
   const k = HANDHELD && a < SCROLL.zoom[0] ? SCROLL.phoneOpening : 1;
   slowIn(() => [storyPx(a), storyPx(b)], v * k, carry * k, whole);
 }
-slowIn(() => [storyPx(1), $('deskSlot').offsetTop], FILES.pace[0] * (HANDHELD ? FILES.phoneQuick : 1), FILES.pace[1] * (HANDHELD ? FILES.phoneQuick : 1));
+slowIn(() => [storyPx(1), box($('deskSlot')).top], FILES.pace[0] * (HANDHELD ? FILES.phoneQuick : 1), FILES.pace[1] * (HANDHELD ? FILES.phoneQuick : 1));
 
-/* ---------- keeping it smooth on a phone ----------
-   (Phones only — PERF.adapt. A computer always draws at full quality.)
-   Every second, the average frame time. Slower than about 42 frames a second and the 3D is
-   drawn at fewer pixels (a step at a time, down to half); back at a steady 60 for a few
-   seconds and it steps back up — but not again to a level that proved too slow straight after
-   stepping up to it, so it settles instead of see-sawing. */
-const gov = { t: 0, n: 0, calm: 0, ceil: 1, raised: -1e9, from: performance.now() + 2500 };   // not while it's still starting up
-function govern(dt, now) {
-  if (!PERF.adapt || dt > 0.25 || now < gov.from) return;                   // a hiccup (a tab switch, a load), not the pace
-  gov.t += dt; gov.n++;
-  if (gov.t < 1) return;
-  const ms = gov.t / gov.n * 1000, q = stage.quality;
-  gov.t = gov.n = 0;
-  if (ms > 24 && q > 0.7) {
-    if (now - gov.raised < 5000) gov.ceil = q * 0.97;       // just stepped up to this, and it's too much
-    stage.setQuality(Math.max(0.7, q * 0.85)); gov.calm = 0;
-  } else if (ms < 18 && q < gov.ceil) {
-    if (++gov.calm >= 4) { gov.calm = 0; gov.raised = now; stage.setQuality(Math.min(gov.ceil, q / 0.9)); }
-  }
-  else gov.calm = 0;
-}
-addEventListener('visibilitychange', () => { gov.t = gov.n = 0; gov.from = performance.now() + 1000; });
+/* ---------- keeping it smooth: how sharp the 3D is drawn, should the device struggle (js/perf.js) ---------- */
+const governor = createGovernor(stage);
+hands.ready.then(() => castFromCopies(renderer, hands.casters()));   // the hands' shadows, from lighter copies of them
 
 /* what's in view: the hands are skinned and cast shadows — no need for either once they're
    off screen (before they rise, and once you're inside the globe) */
@@ -585,9 +570,8 @@ function frame(now) {
   const time = now / 1000;
   const target = scrollTarget();
   p = target;                                                             // exactly where the scroll is: the smooth scroll is the only easing
-  story.p = p;
   // (the story's progress first: however far past the globe the scroll is, the folders follow it to the end)
-  if (scrollY >= track.offsetTop + track.offsetHeight - 1 && p > SCROLL.shrink[0]) {    // scrolled out of view and handed over: nothing to draw
+  if (scrollY >= trackEnd() - 1 && p > SCROLL.shrink[0]) {    // scrolled out of view and handed over: nothing to draw
     if (hovered) setHovered(null);
     videoK = -1; globe?.setPlaying(-1);
     if (globe && !snapped) { snapPage(time); renderer.clear(); }          // …but the folder still needs its picture of the page
@@ -602,7 +586,7 @@ function frame(now) {
   // over to them, and they close it, in step)
   const unzoom = eio(sm(SCROLL.unzoom, p)), handed = !Number.isFinite(FORCE_P) && p > SCROLL.shrink[0];   // (the folders' own test is the exact opposite)
   // and until it is handed over, the globe's page stays on the screen even if the scroll has run on past it
-  stageEl.classList.toggle('pinned', !handed && scrollY > track.offsetTop + track.offsetHeight - innerHeight);
+  stageEl.classList.toggle('pinned', !handed && scrollY > trackEnd() - innerHeight);
   const enter = eio(sm(SCROLL.enter, p)), open = sm(SCROLL.open, p), lift = sm(SCROLL.lift, p);
   const zoom = eio(sm(SCROLL.zoom, p)) * (1 - unzoom);
   if (globe && handed && !snapped) { if (hovered) setHovered(null); snapPage(time); }   // a picture of the page, as it is (its heading as it reads by default), goes into the folder
@@ -650,6 +634,7 @@ function frame(now) {
   hero.style.setProperty('--up', (intro * 60).toFixed(1) + 'px');
   hero.style.visibility = intro >= 1 ? 'hidden' : 'visible';
   hint.style.opacity = (1 - sm([0, 0.03], p)).toFixed(3);
+  hint.style.visibility = p >= 0.03 ? 'hidden' : '';       // (faded out: its looping drip stops with it)
   foldNotes(fold < 0.003 ? 0 : fold);                       // a hair from the top counts as unfolded, so the graph stays usable
 
   // once folded, the dot is handed to the 3D scene at the same spot and size: it falls,
@@ -732,20 +717,23 @@ function frame(now) {
   const land = Math.exp(-(((p - SCROLL.drop[1]) * STORY_VH / 7.2) ** 2));
   stage.inner.intensity = 0.05 * enter * (1 - sm([0.04, 0.3], open)) * (0.85 + 0.15 * Math.sin(time * 2.1) + 1.4 * land);
 
-  const handsSeen = inView(hands.pair, 0.01);
+  // (before they rise the hands wait below the screen: nothing of them to draw — the test of what's in view can't
+  // tell, as it goes by the hands at rest)
+  const handsSeen = enter > 0.001 && inView(hands.pair, 0.01);
+  globe?.castShadows(lift < CARD_SHADOW_UNTIL);             // the globe's own shadow reaches the hands only while it's low in them
   hands.pair.visible = handsSeen;
   renderer.shadowMap.autoUpdate = handsSeen;                // only the hands take shadows
   if (!handed && (handsSeen || dot.visible || (globe && lift > 0.001))) {   // (once the page is in its folder, nothing to draw)
     renderer.render(scene, camera);
     blank = false;
-    govern(dt, now);
+    governor.tick(dt, now);
   } else if (!blank) { renderer.clear(); blank = true; }    // nothing 3D in view (the landing): draw nothing
   if (globe) drawCircle(dt);                                // after the render, so the card's position is this frame's
 }
 
 coverFontsReady().then(() => {
   globe = createGlobe(renderer, { reduced });
-  gov.from = performance.now() + 2000;                     // its textures go up to the GPU first
+  governor.wait(2000);                                      // its textures go up to the GPU first
   scene.add(globe.group);
   // the Work folder's sheet: the first few covers, as on the globe
   for (let k = 0; k < Math.min(3, WORK.length); k++) workThumbs.append(drawCover(WORK[k], k, WORK.length, () => {}));

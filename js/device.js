@@ -26,11 +26,14 @@ export const TIER = ['full', 'phone', 'low'].includes(forced) ? forced
 // a phone that says it has 8 GB (the most a browser will ever say) — or doesn't say, as an iPhone doesn't: a phone
 // whose screen is as sharp as they come (about 3 pixels to the point), drawn at that
 const big = memory >= 8;
+/* dpr: the most pixels to the point the 3D is drawn at; supersample: how far above the screen's own it starts (a
+   computer: half again, for edges as clean as print); adapt: whether it may be drawn at fewer pixels when the device
+   can't keep up — 'screen': down to the screen's own and no further, false: never (js/perf.js) */
 export const PERF = {
-  //        3D pixels  smoothing  shadow map     cover textures  hand detail  graph notes  2D canvases  texture filtering  trim when slow
-  full:  { dpr: 2,    aa: true,  shadow: 2048, softShadow: true,  cover: 1,    subdiv: 2,   notes: Infinity, canvasDpr: 2,   aniso: 16, adapt: false },
-  phone: { dpr: big ? 3 : 2.5, aa: true, shadow: 1024, softShadow: false, cover: 1, subdiv: big ? 2 : 1, notes: 700, canvasDpr: big ? 3 : 2.5, aniso: 8, adapt: true },
-  low:   { dpr: 1.75, aa: false, shadow: 1024, softShadow: false, cover: 0.75, subdiv: 1,   notes: 420,      canvasDpr: 1.75, aniso: 4,  adapt: true }
+  //        3D pixels  above the screen  smoothing  shadow map     cover textures  hand detail  graph notes  2D canvases  texture filtering  trim when slow
+  full:  { dpr: 3,    supersample: 1.5, aa: true,  shadow: 2048, softShadow: true,  cover: 1.5,  subdiv: 2,   notes: Infinity, canvasDpr: 3,   aniso: 16, adapt: 'screen' },
+  phone: { dpr: big ? 3 : 2.5, supersample: 1, aa: true, shadow: 1024, softShadow: false, cover: 1, subdiv: big ? 2 : 1, notes: 700, canvasDpr: big ? 3 : 2.5, aniso: 8, adapt: false },
+  low:   { dpr: 1.75, supersample: 1,   aa: false, shadow: 1024, softShadow: false, cover: 0.75, subdiv: 1,   notes: 420,      canvasDpr: 1.75, aniso: 4,  adapt: true }
 }[TIER];
 
 document.documentElement.dataset.tier = TIER;
