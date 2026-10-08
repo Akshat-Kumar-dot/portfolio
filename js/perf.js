@@ -106,30 +106,44 @@ export function createGovernor(stage) {
 
 /* ---------- 5. made ready before it's needed ----------
    The shaders for everything in the scene, in the background — both ways it can be lit (`lights` on, and out: 7) —
-   and then, once they're done, draw() (from the frame loop): everything drawn once at a single pixel, what's out of
-   sight too (`show`: the hands below the screen, the globe inside them), so the pictures go up to the graphics chip
-   and the last few shaders (the shadows') are made; and rubbed out before it's ever seen */
+   and then, a step at a time from the frame loop (step(), only while the page is still: each can take a moment),
+   each material drawn once on its own at a single pixel, what's out of sight too (`show`: the hands below the screen,
+   the globe inside them), so its pictures go up to the graphics chip; last, everything with its shadows, for the
+   shadows' own shaders. Each is rubbed out before it's ever seen. (All in one go it was half a second — just as
+   you'd start to scroll.) */
+const ALONE = 31;                                             // the layer a step draws on: just the one thing
 export function prepare(renderer, scene, camera, { show = [], lights = [] } = {}) {
   const state = { ready: false, done: false };
+  const seen = new Set(), todo = [];                         // one of each material (then the shadows)
+  for (const root of show) root.traverse(o => { if (o.isMesh && o.visible && !seen.has(o.material)) { seen.add(o.material); todo.push(o); } });
+  todo.push(null);
   (async () => {
-    for (const on of [true, false]) {
+    // a material at a time, a frame apart — all at once, just setting them going held the page up for a moment
+    for (const on of [true, false]) for (const o of todo) {
+      if (!o) continue;
       for (const l of lights) l.visible = on;                   // (the frame loop sets them back as it needs them)
-      await renderer.compileAsync(scene, camera).catch(() => {});
+      await renderer.compileAsync(o, camera, scene).catch(() => {});
+      await new Promise(r => requestAnimationFrame(r));
     }
     state.ready = true;
   })();
-  state.draw = () => {
-    state.done = true;
-    const culled = [], seen = show.map(o => o.visible);
+  state.step = () => {
+    const one = todo.shift(), was = show.map(o => o.visible), culled = [];
     scene.traverse(o => { if (o.isMesh && o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
     for (const o of show) o.visible = true;
+    const lit = [];
+    if (one) {                                                // just this one (and the lights, so it's lit as ever)
+      camera.layers.set(ALONE); one.layers.enable(ALONE);
+      scene.traverse(o => { if (o.isLight) { lit.push(o); o.layers.enable(ALONE); } });
+    } else renderer.shadowMap.needsUpdate = true;
     renderer.setScissorTest(true); renderer.setScissor(0, 0, 1, 1);
-    renderer.shadowMap.needsUpdate = true;
     renderer.render(scene, camera);
     renderer.setScissorTest(false);
     renderer.clear();
-    show.forEach((o, i) => { o.visible = seen[i]; });
+    if (one) { camera.layers.set(0); one.layers.disable(ALONE); for (const l of lit) l.layers.disable(ALONE); }
+    show.forEach((o, i) => { o.visible = was[i]; });
     for (const o of culled) o.frustumCulled = true;
+    state.done = !todo.length;
   };
   return state;
 }

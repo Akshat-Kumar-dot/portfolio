@@ -15,7 +15,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { HAND } from './config.js';
 import { clamp, lerp, eio } from './utils.js';
-import { subdivideSkinned } from './subdivide.js';
+import { subdivideLevels } from './subdivide.js';
 import { PERF } from './device.js';
 import { createSkinMaterials } from './skin.js';
 
@@ -98,15 +98,17 @@ function poseHand(chains, open, time) {
 
 /* ---------- measurements the skin shader needs, in rest space ---------- */
 function measureRig(geo, chains) {
-  const pos = geo.attributes.position, V = pos.count;
-  const P = new THREE.Vector3(), D = new THREE.Vector3();
+  const pos = geo.attributes.position, V = pos.count, xyz = pos.array;
+  // (straight from the array, sums written out — the same sums, in the same order, as with vectors, so the same
+  // measurements; just without making a vector of every vertex, again and again, as the page loads)
   function radiusAt(center, axis, band = 0.003, maxR = 0.013) {
-    const ds = [];
+    const ds = [], cx = center.x, cy = center.y, cz = center.z, ax = axis.x, ay = axis.y, az = axis.z;
     for (let i = 0; i < V; i++) {
-      P.fromBufferAttribute(pos, i); D.subVectors(P, center);
-      const t = D.dot(axis);
+      let dx = xyz[i * 3] - cx, dy = xyz[i * 3 + 1] - cy, dz = xyz[i * 3 + 2] - cz;
+      const t = dx * ax + dy * ay + dz * az;
       if (Math.abs(t) > band) continue;
-      const perp = D.addScaledVector(axis, -t).length();
+      dx += ax * -t; dy += ay * -t; dz += az * -t;
+      const perp = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (perp < maxR) ds.push(perp);
     }
     ds.sort((a, b) => a - b);
@@ -121,10 +123,13 @@ function measureRig(geo, chains) {
   // the rig's "tip" joint sits under the finger pad, so find where each finger really ends
   function reach(from, axis) {
     let best = 0;
+    const fx = from.x, fy = from.y, fz = from.z, ax = axis.x, ay = axis.y, az = axis.z;
     for (let i = 0; i < V; i++) {
-      P.fromBufferAttribute(pos, i); D.subVectors(P, from);
-      const t = D.dot(axis);
-      if (t > best && D.addScaledVector(axis, -t).length() < 0.011) best = t;
+      let dx = xyz[i * 3] - fx, dy = xyz[i * 3 + 1] - fy, dz = xyz[i * 3 + 2] - fz;
+      const t = dx * ax + dy * ay + dz * az;
+      if (t <= best) continue;
+      dx += ax * -t; dy += ay * -t; dz += az * -t;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 0.011) best = t;
     }
     return best;
   }
@@ -197,13 +202,15 @@ export function createHands(scene) {
     hands.push({ chains, pivot, holder, palmX, wrist });
   }
 
-  const ready = new GLTFLoader().loadAsync(HAND.url).then(gltf => {
+  const ready = new GLTFLoader().loadAsync(HAND.url).then(async gltf => {
     const model = gltf.scene;
     let mesh = null;
     model.traverse(o => { if (o.isSkinnedMesh) mesh = o; });
 
     const plain = mesh.geometry, steps = Math.min(HAND.subdivisions, PERF.subdiv);
-    mesh.geometry = subdivideSkinned(plain, steps);   // phones: one step smoother, not two
+    // (worked out off the main thread, so the page doesn't stop for it as it loads: js/subdivide.js)
+    const levels = await subdivideLevels(plain, steps);
+    mesh.geometry = levels[steps];                     // phones: one step smoother, not two
     const chains = chainsOf(model);
     rig = measureRig(mesh.geometry, chains);
     const mats = createSkinMaterials(rig, HAND.tones);
@@ -212,7 +219,7 @@ export function createHands(scene) {
     mesh.frustumCulled = false;
     // its shadow is cast by a lighter copy of it — the same skeleton, a step less smoothing (a quarter of the
     // triangles), which only the shadow pass ever sees (js/perf.js): the same shadow, for far less work
-    const caster = new THREE.SkinnedMesh(subdivideSkinned(plain, Math.max(0, steps - 1)), new THREE.MeshBasicMaterial());
+    const caster = new THREE.SkinnedMesh(levels[Math.max(0, steps - 1)], new THREE.MeshBasicMaterial());
     caster.bind(mesh.skeleton, mesh.bindMatrix);
     caster.castShadow = true; caster.frustumCulled = false; caster.visible = false; caster.name = 'shadowCaster';
     mesh.add(caster);

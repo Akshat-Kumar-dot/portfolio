@@ -521,7 +521,7 @@ slowIn(() => [files.opensAt(), box($('deskSlot')).top], FILES.pace[0] * quick, F
 const governor = createGovernor(stage);                   // how sharp the 3D is drawn, should the device struggle
 hands.ready.then(() => castFromCopies(renderer, hands.casters()));   // the hands' shadows, from lighter copies of them
 const redraw = createRedraw(renderer, camera);            // the same frame isn't drawn twice
-let prepared = null, shadowAt = 0, pairY = 0;             // (the 3D made ready while the landing's up: see the foot of the file)
+let prepared = null, shadowAt = 0, pairY = 0, stillY = -1, stillAt = 0;             // (the 3D made ready while the landing's up: see the foot of the file)
 
 /* what's in view: the hands are skinned and cast shadows — no need for either once they're
    off screen (before they rise, and once you're inside the globe) */
@@ -574,13 +574,16 @@ function stepView([ax, ay]) {
    held still, so scrolling back up it takes over again exactly where the picture leaves off */
 let snapped = false;
 const stageEl = $('stage');
-function snapPage(time) {
+function snapPage(time, asSeen = false) {
   if (!files.shot || !renderer.domElement.width || !renderer.domElement.height) return;   // no picture to take yet
   snapped = true;
   const cup = hands.update(time, 1, 1, 1, handsBelow, handsEdge);   // open, settled, in place
   hands.pair.visible = true; dot.visible = false; globe.group.visible = true;
-  stage.inner.position.copy(cup); stage.inner.intensity = 0;
-  camera.position.copy(CAM_POS); camera.lookAt(CAM_AT); camera.updateMatrixWorld();
+  stage.inner.position.copy(cup); stage.inner.intensity = 0; stage.inner.visible = false;
+  // asSeen: handed over from the floating globe, the view just as you've left it (zoomed, turned); otherwise (jumped
+  // here from elsewhere) the floating view as it first is
+  if (!asSeen) { camera.position.copy(CAM_POS); camera.lookAt(CAM_AT); }
+  camera.updateMatrixWorld();
   globe.group.position.copy(GLOBE_AT); globe.group.scale.setScalar(GLOBE.radius); globe.group.lookAt(CAM_POS);
   globe.group.updateMatrixWorld(true);
   const d = camera.position.distanceTo(GLOBE_AT);
@@ -600,9 +603,12 @@ function frame(now) {
   requestAnimationFrame(frame);
   lenis?.raf(now);                                          // the smooth scroll moves first: everything below is drawn where the page now is
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
-  if (prepared?.ready && !prepared.done) {                  // the shaders are made: everything drawn once, unseen (js/perf.js)
-    prepared.draw();
-    inView(hands.pair, 0);                                  // (and the hands measured, which takes a moment the first time)
+  // the shaders are made: each thing drawn once, unseen, a step a frame — and only while the page is still, so a
+  // step's moment never lands in the middle of a scroll (js/perf.js)
+  if (Math.abs(scrollY - stillY) > 0.5 || lenis?.isTouching) { stillY = scrollY; stillAt = now; }
+  if (prepared?.ready && !prepared.done && now - stillAt > 300) {
+    prepared.step();
+    if (prepared.done) inView(hands.pair, 0);               // (and the hands measured, which takes a moment the first time)
     redraw.forget(); blank = true;
   }
   if (handsEdge) {                                          // a phone's address bar coming or going: the wrists follow the bottom of the screen
@@ -631,7 +637,7 @@ function frame(now) {
   stageEl.classList.toggle('pinned', !handed && scrollY > trackEnd() - innerHeight);
   const enter = eio(sm(SCROLL.enter, p)), open = sm(SCROLL.open, p), lift = sm(SCROLL.lift, p);
   const zoom = eio(sm(SCROLL.zoom, p)) * (1 - unzoom);
-  if (globe && handed && !snapped) { if (hovered) setHovered(null); snapPage(time); }   // a picture of the page, as it is (its heading as it reads by default), goes into the folder
+  if (globe && handed && !snapped) { if (hovered) setHovered(null); snapPage(time, mode === 'free'); }   // a picture of the page, as it is (its heading as it reads by default), goes into the folder
   if (!handed) snapped = false;
   stageEl.style.visibility = handed && snapped ? 'hidden' : '';
   // packed away in its folder, a picture of it standing in: nothing of the 3D to work out, frame after frame
@@ -654,8 +660,9 @@ function frame(now) {
 
   // camera: the fixed view, carried in toward the front card as you zoom — and your own zoom on top
   // (z beyond 1 goes closer than the scroll does, below 0 further out than the floating view)
-  // (stepped back out, floating a moment before the page closes, it's just as its picture will have it: no zoom of your own, no peek)
-  const uzWT = (mode === 'free' && !unzoom) || mode === 'focus' ? 1 : 0;
+  // (floating free — before you step inside, or once you've stepped back out, before the page closes — it's yours to
+  // zoom and turn: the picture that goes into the folder is taken just as you've left it)
+  const uzWT = mode === 'free' || mode === 'focus' ? 1 : 0;
   uzW += (uzWT - uzW) * (1 - Math.exp(-dt * 8));
   uz += (uzT - uz) * (1 - Math.exp(-dt * 9));
   if (Math.abs(uzWT - uzW) < 1e-5) uzW = uzWT;              // (there: quite still, so the camera is)
@@ -671,7 +678,7 @@ function frame(now) {
   } else if (globe && z < 0) {
     camera.position.sub(globe.group.position).multiplyScalar(1 - z * 0.9).add(globe.group.position);
   }
-  if (mode === 'free' && !unzoom) { camera.position.x += mouse.x * 0.012 * (Math.abs(mouse.x) < 2); camera.position.y += mouse.y * 0.008 * (Math.abs(mouse.y) < 2); }
+  if (mode === 'free') { camera.position.x += mouse.x * 0.012 * (Math.abs(mouse.x) < 2); camera.position.y += mouse.y * 0.008 * (Math.abs(mouse.y) < 2); }
   if (DEBUG_CAM) { camera.position.copy(DEBUG_CAM.pos); _at.copy(DEBUG_CAM.at); }
   camera.lookAt(_at);
   camera.updateMatrixWorld();
@@ -739,7 +746,7 @@ function frame(now) {
       if (row !== bandRow) { bandRow = row; globe.aimRow(row); }
     } else bandRow = null;
     setGuide(mode === 'free' || (mode === 'focus' && stageInView()) ? mode : '');
-    earth.classList.toggle('on', ((mode === 'free' && !unzoom) || mode === 'focus') && stageInView());
+    earth.classList.toggle('on', (mode === 'free' || mode === 'focus') && stageInView());
     steer(dt, now);
     if (interactive() && !dragging && fine) {
       ray.setFromCamera(mouse, camera);
