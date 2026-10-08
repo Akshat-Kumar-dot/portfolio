@@ -62,7 +62,7 @@ portfolio/
 │   ├── main.js         scroll choreography: hands → globe → camera, plus hover and drag
 │   ├── stage.js        renderer, camera, lights, fog
 │   ├── device.js       how much the device can take: the full version, or lighter ones for phones
-│   ├── mark.js         the watermark: in the paper, on the cards, kept in place; and copies flagged
+│   ├── mark.js         whose site this is: on the cards, in the metadata; and copies flagged
 │   ├── hands.js        the two hands: loading, posing, open/close, forearms
 │   ├── skin.js         procedural skin shader: nails, creases, palm lines, veins, pores
 │   ├── subdivide.js    smooths the low-poly hand model (Loop subdivision)
@@ -195,7 +195,7 @@ The pen line itself (how loose, how many times round, how it presses and lifts) 
 The card design (palettes, the interface wireframes, the typography) is in `js/covers.js`.
 
 ### Phones and slower devices
-`js/device.js` sorts each visitor into one of three tiers: `full` (a computer), `phone`, and `low` (a phone with 4 GB of memory or less — most budget phones). Phones get the same site, lighter: the 3D at fewer pixels and without edge smoothing (their screens are sharp enough), smaller shadows, the card covers at half size, the hands smoothed once instead of twice, and a thinner notes graph (700 or 420 of its 1,320 notes — every busy note kept, an even share of the rest). The project video only downloads when it plays.
+`js/device.js` sorts each visitor into one of three tiers: `full` (a computer), `phone`, and `low` (a phone with 2 GB of memory or less — browsers round memory down, so a 6 GB phone says 4). Phones get the same site, a little lighter but still sharp: the 3D at up to twice the screen's pixels (1.75× on `low`) without edge smoothing (their screens are sharp enough), the card covers at full size (three quarters on `low`), smaller shadows, the hands smoothed once instead of twice, and a thinner notes graph (700 or 420 of its 1,320 notes — every busy note kept, an even share of the rest). If a phone can't keep up, the 3D is drawn at fewer pixels, but never below the screen's own. Two fingers on the globe always zoom it — a pinch never scrolls the page, even when one finger lifts before the other. The project video only downloads when it plays.
 
 The top of the page is just the section links, centred (your name is already big on the landing page); the work's heading — *Projects*, with the project count or the card you're on — sits top-left. On a phone the layout changes a little more: no section links, the line saying what to do sits under the heading, and the hands keep their wrists just below the bottom of the screen. A tall screen sees much further down than a laptop's, far enough to show the forearms, so this keeps it to the palms, as on a laptop, however the hands move (`edge` in `hands.js`).
 
@@ -211,9 +211,7 @@ CSS variables at the top of `css/style.css` (`--bg`, `--ink`, `--muted`, `--acce
 ---
 
 ### Watermark, and copies
-Whose site this is is worked in all through it (`js/mark.js`): a faint repeating “© 2026 Akshat Kumar” in the paper behind every page (painted into the same layer as the paper's grain, so taking it out means rewriting the paper), on every project card in its little browser window's address bar, on the folders' sheets, in the page's metadata, and in the console. Hide the paper's layer or delete it — in the browser's tools, with a stylesheet — and it's put straight back.
-
-Set `SITE.url` in `js/config.js` to the address the site lives at once it's online. Then the watermark carries that address too, search engines are told which copy is the original, and served from anywhere else the site says, at the bottom of the screen, that it's an unofficial copy and where the real one is.
+Whose site this is is worked in all through it (`js/mark.js`): on every project card in its little browser window's address bar, in the page's metadata, and in the console, and search engines are told which address is the original. On the site itself the paper behind the pages is plain. A copy of it put up anywhere else carries a faint repeating mark in its paper — kept in place if it's hidden or taken out — and says at the bottom of the screen that it's an unofficial copy, and where the real one is.
 
 To be straight about it: nothing a browser shows can be made impossible to remove — whoever has the files can change them, and so can an AI. What this does is make a copy obvious and a clean copy real work. The real protection is that the work is yours: it's dated in your own Git history, `LICENSE` says all rights are reserved, and a copy hosted somewhere can be taken down with a copyright (DMCA) notice to its host — GitHub, Netlify, Cloudflare and the rest all act on them.
 

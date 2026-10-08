@@ -30,8 +30,8 @@ a { color:inherit; }
    blend, so phones don't have to repaint the page as it scrolls */
 body::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
                background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%); }
-.grain { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.45; }   /* also carries the watermark (js/mark.js) */
-/* shown only when the site is served from somewhere other than SITE.url (js/mark.js) */
+.grain { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.45; }   /* the paper (js/mark.js) */
+/* on a copy of the site (js/mark.js) */
 .copy-notice { position:fixed !important; z-index:20 !important; left:50%; bottom:14px; transform:translateX(-50%); display:block !important;
                max-width:calc(100% - 24px); padding:9px 14px; border-radius:8px; background:var(--ink); color:var(--bg-hi);
                font:500 11px/1.4 var(--mono); letter-spacing:.06em; text-align:center; box-shadow:0 10px 24px -12px rgba(0,0,0,.5); }

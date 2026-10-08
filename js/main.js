@@ -452,9 +452,9 @@ function govern(dt, now) {
   if (gov.t < 1) return;
   const ms = gov.t / gov.n * 1000, q = stage.quality;
   gov.t = gov.n = 0;
-  if (ms > 24 && q > 0.5) {
+  if (ms > 24 && q > 0.7) {
     if (now - gov.raised < 5000) gov.ceil = q * 0.97;       // just stepped up to this, and it's too much
-    stage.setQuality(Math.max(0.5, q * 0.85)); gov.calm = 0;
+    stage.setQuality(Math.max(0.7, q * 0.85)); gov.calm = 0;
   } else if (ms < 18 && q < gov.ceil) {
     if (++gov.calm >= 4) { gov.calm = 0; gov.raised = now; stage.setQuality(Math.min(gov.ceil, q / 0.9)); }
   }

@@ -40,7 +40,7 @@ export function createStage(canvas) {
   scene.add(key, key.target, rim, inner);
 
   let W = 1, H = 1, quality = 1;
-  const ratio = () => Math.max(Math.min(devicePixelRatio, PERF.dpr) * quality, Math.min(devicePixelRatio, 0.75));
+  const ratio = () => Math.max(Math.min(devicePixelRatio, PERF.dpr) * quality, Math.min(devicePixelRatio, 1));
   function resize(w, h) {
     W = w; H = h;
     renderer.setPixelRatio(ratio());

@@ -59,6 +59,7 @@ const LERP = 0.165, TOUCH_LERP = 0.085;                       // the wheel's gli
 let lenis = null;
 const stops = [], zones = [];
 let landing = null, restFrom = -1e9, lastInput = 'wheel', gliding = false;
+let pinching = false;                                        // two fingers on the screen: a pinch (main.js zooms the globe), not a scroll
 
 /* getY() → a scroll position the page comes to rest on, on the way down */
 export function landOn(getY) { stops.push(getY); }
@@ -90,6 +91,15 @@ export function initSmoothScroll({ reduced = false } = {}) {
       if (e.defaultPrevented) return false;                   // taken by the page's own handling
       if (e.target?.closest?.('.notes.active')) return false; // the notes graph, being zoomed and panned
       const touch = e.type.startsWith('touch');
+      // a second finger down makes it a pinch — and it stays one until every finger is off, so the page
+      // neither scrolls under the pinch nor jumps when one finger lifts before the other
+      if (e.type === 'touchstart' && e.touches?.length === 1) pinching = false;   // a fresh touch (should a lift have gone missing)
+      if (touch && e.touches?.length > 1) pinching = true;
+      if (pinching) {
+        if (e.type === 'touchend' && !e.touches?.length) pinching = false;
+        if (e.type === 'touchmove' && e.cancelable) e.preventDefault();   // nor may the browser scroll it
+        return false;
+      }
       if (touch && e.type === 'touchmove' && Math.abs(data.deltaX) > Math.abs(data.deltaY)) return false;   // a sideways swipe isn't a scroll
       lastInput = touch ? 'touch' : 'wheel'; gliding = false;
       if (e.type === 'wheel') { limitFlick(data); rest(data); govern(data, LERP); }

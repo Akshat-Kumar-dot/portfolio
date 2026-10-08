@@ -240,7 +240,7 @@ function wrapLines(x, text, maxW) {
 export function drawCover(item, index, total, onReady) {
   const C0 = { ...PALETTES[index % PALETTES.length], ...item.colors };   // a project can set its own colours
   const c = document.createElement('canvas');
-  c.width = Math.round(COVER_W * PERF.cover); c.height = Math.round(COVER_H * PERF.cover);   // phones: half size — plenty for their screens
+  c.width = Math.round(COVER_W * PERF.cover); c.height = Math.round(COVER_H * PERF.cover);   // (a budget phone: three quarters)
   const x = c.getContext('2d');
   x.scale(PERF.cover, PERF.cover);                           // everything below is drawn in COVER_W × COVER_H units
   const r = rng(item.title + index);

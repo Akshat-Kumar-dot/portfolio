@@ -14,9 +14,6 @@ export const SITE = {
   location: 'India',
   about: 'I design and build software and AI tools — from the first sketch to the last pixel, and the model and the servers underneath. I care about the details people feel but rarely notice. (Replace this with a few lines about you.)',
   email: 'akshat.kumar.singh05@gmail.com',
-  // where the site lives once it's online, e.g. 'https://akshat-kumar-dot.github.io/portfolio/'. It goes in the
-  // watermark, tells search engines which copy is the original, and anywhere else the site says it's a copy (js/mark.js)
-  url: 'https://portfolio.akshat-kumar-singh05.workers.dev/',
   links: [
     { label: 'GitHub', url: '#' },
     { label: 'LinkedIn', url: '#' },
