@@ -268,7 +268,21 @@ canvas.addEventListener('pointerdown', e => {
     if (touches.size === 2) { if (dragging) { dragging = false; canvas.classList.remove('drag'); globe.release(); } pinchStart(); return; }
   }
   dragging = true; moved = 0; lx = ox = e.clientX; ly = oy = e.clientY; axis = '';
+  // floating free, a finger that comes down on the globe turns it, whichever way it goes, and the page holds still
+  // under it; one that comes down beside it scrolls on (inside, up and down always walks the rows)
+  if (e.pointerType !== 'mouse' && mode === 'free' && globe && onGlobe(e.clientX, e.clientY)) { axis = 'turn'; holdTouch(true); }
 });
+/* whether a point on the screen is on the globe */
+const _sphere = new THREE.Sphere();
+function onGlobe(x, y) {
+  ray.setFromCamera(new THREE.Vector2(x / W * 2 - 1, -(y / H) * 2 + 1), camera);
+  return ray.ray.intersectsSphere(_sphere.set(globe.group.position, globe.group.scale.x * 1.06));
+}
+/* the card under a point on the screen (a finger has no hover to go by) */
+function cardAt(x, y) {
+  ray.setFromCamera(new THREE.Vector2(x / W * 2 - 1, -(y / H) * 2 + 1), camera);
+  return globe.pick(ray);
+}
 const lift1 = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (!touches.size) holdTouch(false); };
 addEventListener('pointercancel', lift1);
 addEventListener('pointerup', e => {
@@ -276,9 +290,10 @@ addEventListener('pointerup', e => {
   if (!dragging) return;
   dragging = false; canvas.classList.remove('drag');
   if (moved > 6) { if (axis === 'turn') { globe.release(); keepRow(); } return; }   // (a scroll isn't a tap either)
-  if (!hovered) return;
-  if (mode === 'focus' && hovered !== globe.focus) { globe.focusCard(hovered); return; }   // an edge card: bring it to the centre
-  const url = WORK[hovered.k].url;
+  const card = hovered || (e.pointerType !== 'mouse' && globe ? cardAt(e.clientX, e.clientY) : null);   // a tap: the card under the finger
+  if (!card) return;
+  if (mode === 'focus' && card !== globe.focus) { globe.focusCard(card); return; }   // an edge card: bring it to the centre
+  const url = WORK[card.k].url;
   if (url && url !== '#') open(url, /^https?:/.test(url) ? '_blank' : '_self', 'noopener');
 });
 canvas.addEventListener('pointerleave', () => mouse.set(9, 9));
@@ -507,7 +522,8 @@ let videoK = -1;                                            // the project whose
 /* ---------- your own zoom, and the pan control (Google Earth-like) ----------
    uz: how far you've zoomed in (+) or out (−) from where the scroll has the camera, in the same
    units as the scroll's zoom (1 = from floating free to one card filling the screen) */
-const Z_MIN = -0.5, Z_MAX = 1.45;
+// (a phone zooms out no further than the view it starts with: wider, its tall screen would show the arms)
+const Z_MIN = HANDHELD ? 0 : -0.5, Z_MAX = 1.45;
 let uz = 0, uzT = 0, uzW = 0, held = null, heldNext = 0;
 const turnQ = { x: 0, y: 0 };                               // turning still to do, eased out over the next frames
 const zoomBy = d => { const zNow = mode === 'focus' ? 1 : 0; uzT = clamp(uzT + d, Z_MIN - zNow, Z_MAX - zNow); };
@@ -592,6 +608,8 @@ function frame(now) {
   if (globe && handed && !snapped) { if (hovered) setHovered(null); snapPage(time); }   // a picture of the page, as it is (its heading as it reads by default), goes into the folder
   if (!handed) snapped = false;
   stageEl.style.visibility = handed && snapped ? 'hidden' : '';
+  // packed away in its folder, a picture of it standing in: nothing of the 3D to work out, frame after frame
+  if (handed && snapped && mode === 'packing') return;
 
   // hands rise into view, part, and settle a touch once the globe has risen clear
   const cup = hands.update(time, open, sm([0.6, 1], lift), enter, handsBelow, handsEdge);
@@ -599,7 +617,8 @@ function frame(now) {
   let R = GLOBE.seed;
   if (globe) {
     // small enough to hide between the closed palms; grows steadily as it rises
-    R = GLOBE.seed * Math.pow(GLOBE.radius / GLOBE.seed, lift);
+    // (sooner rather than later: half its size by about halfway, so the dot turns into the globe as you scroll)
+    R = GLOBE.seed * Math.pow(GLOBE.radius / GLOBE.seed, 1 - Math.pow(1 - lift, 1.7));
     globe.group.position.lerpVectors(cup, GLOBE_AT, lift);
     globe.group.position.y += Math.sin(Math.PI * lift) * 0.02 + Math.sin(time * 0.8) * 0.004 * lift * (1 - zoom) * (1 - unzoom);
     globe.group.scale.setScalar(R);

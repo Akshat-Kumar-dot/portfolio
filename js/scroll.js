@@ -21,9 +21,12 @@
    · speed zones (slowIn): over the stretches where the story plays —
      the dot falling, the globe rising, the zoom, the page going into
      its folder, Behind the scenes coming up — the page moves no faster
-     than the zone's speed, however hard you scroll: wheel, trackpad,
-     finger and fling alike, and the same speed every time, a gentle
-     scroll or a hard one, the way in or the way back. Scroll harder
+     than the zone's speed, however hard you scroll: wheel, trackpad
+     and fling alike, and the same speed every time, a gentle scroll or
+     a hard one, the way in or the way back (a finger still on a phone's
+     screen moves the page exactly as far as it moves, so the story
+     answers it at once; it's the fling once it lets go that's held to
+     the zone's pace). Scroll harder
      and it just keeps going at that speed for as long as you scroll;
      stop and it eases to a stop within a moment. Coming up to a zone
      it slows into it, rather than hitting a wall. A zone can also be
@@ -106,7 +109,7 @@ export function initSmoothScroll({ reduced = false } = {}) {
       // (from the very top of Behind the scenes it's the phone's own the moment you scroll down — and the site's if you
       // scroll back up into the folders, where the zones hold)
       if (HANDHELD && e.type === 'touchstart' && e.touches?.length === 1) {
-        lenis.options.syncTouch = !pastStory(lenis.animatedScroll, 0.25); nativeTouch = !lenis.options.syncTouch; held = false;
+        lenis.options.syncTouch = !pastStory(lenis.animatedScroll, 0.25); nativeTouch = !lenis.options.syncTouch;
         deciding = lenis.options.syncTouch && pastStory(lenis.animatedScroll);
       }
       if (deciding && e.type === 'touchmove' && data.deltaY) {
@@ -123,11 +126,15 @@ export function initSmoothScroll({ reduced = false } = {}) {
         if (e.type === 'touchmove' && e.cancelable) e.preventDefault();   // nor may the browser scroll it
         return false;
       }
-      if (touch && held) { if (e.type === 'touchmove' && e.cancelable) e.preventDefault(); return false; }
+      if (touch && held) {                                    // a finger turning the globe (main.js): the page holds still
+        if (e.type === 'touchend' && !e.touches?.length) held = false;
+        if (e.type === 'touchmove' && e.cancelable) e.preventDefault();
+        return false;
+      }
       if (touch && e.type === 'touchmove' && Math.abs(data.deltaX) > Math.abs(data.deltaY)) return false;   // a sideways swipe isn't a scroll
       lastInput = touch ? 'touch' : 'wheel'; gliding = false;
       if (e.type === 'wheel') { limitFlick(data); rest(data); govern(data, LERP); }
-      else if (e.type === 'touchmove') { rest(data); govern(data, 1); }
+      else if (e.type === 'touchmove') govern(data, 1);
       else if (e.type === 'touchend') { rate = TOUCH_LERP; inputAt = performance.now(); requestAnimationFrame(resume); }
       if (data.deltaY || data.deltaX || e.type === 'touchend') return true;
       // limited to nothing: nor may the browser scroll it — but only ever a move is held back, never a touch going
@@ -210,6 +217,9 @@ function govern(data, r) {
   rate = r; inputAt = performance.now();
   if (dir !== bankDir || !lenis.isScrolling) { bank = 0; bankDir = dir; }
   if (through && through.dir !== dir) through = null;      // turned round: it goes back the way you're going now
+  // a finger on the screen moves the page exactly as far as it moves, wherever it is — the story answers it at once;
+  // it's the fling after it lets go that the zones hold to their pace (pace())
+  if (r === 1) return;
   // where the page is already heading — Lenis's target, unless a jump the browser made has left it stale
   const t = lenis.isScrolling && Math.abs(lenis.targetScroll - y) < innerHeight * 3 ? lenis.targetScroll : y;
   const ahead = Math.max(0, (t - y) * dir), { cap, most, stop } = reach(y, dir, r);
@@ -235,6 +245,7 @@ function pace() {
   const y = lenis.animatedScroll, t = lenis.targetScroll, dir = bankDir, ahead = (t - y) * dir;
   const moved = Math.abs(y - (paceY ?? y)); paceY = y;
   playThrough(y, dir);
+  if (lenis.isTouching) { bank = 0; return; }                // the finger's: nothing held back while it's on the screen
   if (through && !lenis.isTouching) rate = LERP;             // playing through, it ends as crisply as a turn of the wheel
   // playing a whole zone through: enough in hand to get to its end (once the finger's off — till then it's the
   // finger's); otherwise, once you've stopped scrolling, what's in hand fades

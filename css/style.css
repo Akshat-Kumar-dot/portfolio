@@ -158,6 +158,9 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
 /* fixed to the screen, not sticky: js/files.js shows it only while there's something of it to see */
 .files-stage { position:fixed; left:0; right:0; top:0; height:100vh; height:100lvh; overflow:hidden; overflow:clip; }
 .folder { position:absolute; will-change:transform; }
+/* the parts that move on their own as a page closes into its folder or opens out of it (js/files.js), each on a
+   layer of its own — so moving them doesn't make the browser draw the folder they're in again, frame after frame */
+.holder .f-back, .holder .f-tab, .holder .f-front, .target .f-back, .target .f-tab, .target .f-front { will-change:transform; }
 .f-back { position:absolute; left:0; top:0; overflow:visible; }
 .f-back path { fill:var(--f-back); }
 .f-tab { position:absolute; top:0; height:var(--tab); display:flex; align-items:center; gap:9px; padding-top:1px; white-space:nowrap;
@@ -171,10 +174,10 @@ html.filing #deskSlot, html.filing #about, html.filing #contact { visibility:hid
 .f-paper { position:absolute; inset:0; background:var(--mark, none) var(--bg-hi); pointer-events:none; will-change:opacity; }
 .f-front { position:absolute; left:0; right:0; bottom:0; top:calc(var(--tab) + var(--peek)); border-radius:10px 10px 0 0;
            background:var(--f-front); box-shadow:inset 0 1px 0 rgba(255,255,255,.16); }
-.f-page { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; }
+.f-page { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; will-change:transform; }   /* (drawn once, then just carried) */
 /* the globe's page, in the Work folder's sheet (js/files.js): the screen as it was — paper, grain, the 3D, the top bar */
 .holder .f-sheet { bottom:auto; }
-.f-shot { position:absolute; left:0; top:0; transform-origin:0 0; overflow:hidden; display:none; pointer-events:none; }
+.f-shot { position:absolute; left:0; top:0; transform-origin:0 0; overflow:hidden; display:none; pointer-events:none; will-change:transform; }
 .has-shot .f-shot { display:block; }
 .has-shot .f-note { visibility:hidden; }
 .f-shot-paper { position:absolute; inset:0; background:radial-gradient(130% 95% at 50% 42%, var(--bg-hi) 0%, var(--bg) 48%, var(--bg-lo) 100%); }
