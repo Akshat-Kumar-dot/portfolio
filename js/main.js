@@ -478,7 +478,7 @@ for (const [a, b, v, carry, whole] of SCROLL.pace) {
   const k = HANDHELD && a < SCROLL.zoom[0] ? SCROLL.phoneOpening : 1;
   slowIn(() => [storyPx(a), storyPx(b)], v * k, carry * k, whole);
 }
-slowIn(() => [storyPx(1), $('deskSlot').offsetTop], ...FILES.pace);
+slowIn(() => [storyPx(1), $('deskSlot').offsetTop], FILES.pace[0] * (HANDHELD ? FILES.phoneQuick : 1), FILES.pace[1] * (HANDHELD ? FILES.phoneQuick : 1));
 
 /* ---------- keeping it smooth on a phone ----------
    (Phones only — PERF.adapt. A computer always draws at full quality.)

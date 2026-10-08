@@ -129,7 +129,9 @@ export function initSmoothScroll({ reduced = false } = {}) {
       else if (e.type === 'touchmove') { rest(data); govern(data, 1); }
       else if (e.type === 'touchend') { rate = TOUCH_LERP; inputAt = performance.now(); requestAnimationFrame(resume); }
       if (data.deltaY || data.deltaX || e.type === 'touchend') return true;
-      if (e.cancelable) e.preventDefault();                   // limited to nothing: nor may the browser scroll it
+      // limited to nothing: nor may the browser scroll it — but only ever a move is held back, never a touch going
+      // down or lifting: that would stop the phone scrolling the page itself, and a tap from being a tap
+      if (e.cancelable && e.type !== 'touchstart' && e.type !== 'touchend') e.preventDefault();
       return false;
     }
   });

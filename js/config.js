@@ -176,7 +176,8 @@ export const FILES = {
   cue: 'Keep scrolling to open',
   stepVh: 30,                        // scrolling from one folder to the next (Work → Behind the scenes), in vh
   openVh: 55,                        // scrolling to open Behind the scenes into the page, in vh
-  pace: [36, 0.25]                   // through those two: a speed zone (vh a second, carry in screens — see STORY's)
+  pace: [36, 0.25],                  // through those two: a speed zone (vh a second, carry in screens — see STORY's)
+  phoneQuick: 2.5                    // on a phone, this much quicker (a swipe covers far less than a turn of the wheel)
 };
 
 /* The hands. Colours are taken from real skin: backs darker, palms lighter. */
