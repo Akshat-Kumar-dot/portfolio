@@ -113,6 +113,7 @@ const PACE = [
 export const SCROLL = {                                   // the same, as fractions of the story (0 → 1)
   ...Object.fromEntries(Object.entries(STORY).map(([k, [a, b]]) => [k, [a / STORY_VH, b / STORY_VH]])),
   spin: 7.2,                // radians the globe turns while it rises
+  phoneOpening: 1.9,        // on a phone, the opening (the dot to the hands, the globe rising) this much quicker
   pace: PACE.map(([a, b, ...rest]) => [a / STORY_VH, b / STORY_VH, ...rest])
 };
 

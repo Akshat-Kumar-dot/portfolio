@@ -92,12 +92,22 @@ const TO_CAM = new THREE.Vector3().subVectors(CAM_POS, GLOBE_AT).normalize();
 const LOOK_DOWN = Math.atan2(CAM_POS.y - CAM_AT.y, CAM_POS.z - CAM_AT.z);
 let W = innerWidth, H = innerHeight, inkDpr = 1, handsBelow = 0.2, handsEdge = null, fitted = false;
 
-// the screen at its smallest (a phone with its address bar showing): the hands' wrists sit at its bottom, so they're
-// whole down to the wrist whether the bar is showing or not — and when it slides away, they carry on to the edge
-// of the screen, as on a laptop (the paper behind carries on too: style.css)
+// how much of the 3D is on screen: all of it, or — a phone with its address bar showing — all but the bottom strip
+// the bar takes. The hands' wrists sit at the bottom of what's on screen, so it's palms only, down to the wrist,
+// either way; as the bar comes and goes they follow it, in a moment (and never for the keyboard: the screen at
+// its smallest is as far up as they go)
 const seenProbe = document.createElement('div');
 seenProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none';
 document.body.append(seenProbe);
+let fewest = 0, seen = 0, slope = 0;
+function onScreen() {
+  const vv = window.visualViewport, h = vv ? vv.height * vv.scale : innerHeight;
+  return clamp(h, fewest, H);
+}
+function setEdge() {
+  const across = Math.tan(camera.fov * Math.PI / 360);
+  slope = Math.tan(LOOK_DOWN + Math.atan((2 * seen / H - 1) * across));   // the bottom of what's on screen
+}
 function fit() {
   const w = innerWidth, h = $('stage').clientHeight || innerHeight;   // (a phone's address bar sliding away changes nothing)
   if (w === W && h === H && fitted) return;
@@ -112,8 +122,8 @@ function fit() {
   // how far down the view reaches at depth z. A tall screen (a phone) sees much further down than a
   // wide one — far enough to show the forearms — so there the hands are held with their wrists at
   // the bottom edge (hands.js): palms only, as on a laptop
-  const seen = Math.min(H, seenProbe.offsetHeight || H), across = Math.tan(camera.fov * Math.PI / 360);
-  const slope = Math.tan(LOOK_DOWN + Math.atan((2 * seen / H - 1) * across));   // (the bottom of what's always on screen)
+  fewest = Math.min(H, seenProbe.offsetHeight || H);
+  seen = onScreen(); setEdge();
   const edge = z => CAM_POS.y - slope * (CAM_POS.z - z);
   handsEdge = camera.fov > 26.01 ? edge : null;
   // before they rise, the hands wait just below the bottom of the view — the fingertips (~0.19 m up) too
@@ -462,7 +472,12 @@ function scrollTarget() {
 /* the story's speed zones (SCROLL.pace, and the folders' FILES.pace): over those stretches the scroll itself
    is held to a pace you can follow, however hard you scroll (js/scroll.js) — everything still just follows it */
 const storyPx = f => f * (track.offsetHeight - innerHeight);
-for (const [a, b, v, carry, whole] of SCROLL.pace) slowIn(() => [storyPx(a), storyPx(b)], v, carry, whole);
+// (on a phone a swipe covers far less than a turn of the wheel, so the opening — the dot falling into the hands,
+// the globe rising out of them — goes quicker there: fewer swipes, and less of a wait)
+for (const [a, b, v, carry, whole] of SCROLL.pace) {
+  const k = HANDHELD && a < SCROLL.zoom[0] ? SCROLL.phoneOpening : 1;
+  slowIn(() => [storyPx(a), storyPx(b)], v * k, carry * k, whole);
+}
 slowIn(() => [storyPx(1), $('deskSlot').offsetTop], ...FILES.pace);
 
 /* ---------- keeping it smooth on a phone ----------
@@ -563,6 +578,10 @@ function frame(now) {
   requestAnimationFrame(frame);
   lenis?.raf(now);                                          // the smooth scroll moves first: everything below is drawn where the page now is
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (handsEdge) {                                          // a phone's address bar coming or going: the wrists follow the bottom of the screen
+    const aim = onScreen();
+    if (Math.abs(aim - seen) > 0.5) { seen += (aim - seen) * (1 - Math.exp(-dt * 14)); if (Math.abs(aim - seen) < 0.5) seen = aim; setEdge(); }
+  }
   const time = now / 1000;
   const target = scrollTarget();
   p = target;                                                             // exactly where the scroll is: the smooth scroll is the only easing

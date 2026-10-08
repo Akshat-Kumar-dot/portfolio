@@ -53,14 +53,14 @@ export const LAND = { hold: 220 };
 
 /* in a speed zone, once you stop scrolling (no input for `after` ms), what the scroll still had in hand
    fades away over about `wheel` / `touch` seconds — so the page eases to a stop, and nothing plays on */
-const FADE = { after: 90, wheel: 0.12, touch: 0.22 };
+const FADE = { after: 90, wheel: 0.12, touch: 0.45 };   // (a fling carries on a little, as a phone's own does)
 
 const LERP = 0.165, TOUCH_LERP = 0.085;                       // the wheel's glide; a fling's
 let lenis = null;
 const stops = [], zones = [];
 let landing = null, restFrom = -1e9, lastInput = 'wheel', gliding = false;
 let pinching = false;                                        // two fingers on the screen: a pinch (main.js zooms the globe), not a scroll
-let held = false, nativeY = null, nativeTouch = false;
+let held = false, nativeY = null, nativeTouch = false, deciding = false;
 
 /* a finger turning the globe (main.js): the page holds still under it until it lifts */
 export function holdTouch(on) { held = on; }
@@ -102,7 +102,16 @@ export function initSmoothScroll({ reduced = false } = {}) {
       const touch = e.type.startsWith('touch');
       // past the story a phone scrolls the way it always does — its own scrolling, with its own momentum, smooth
       // however busy the page is; the story keeps the finger in step with it (the zones). Decided as each touch begins
-      if (HANDHELD && e.type === 'touchstart' && e.touches?.length === 1) { lenis.options.syncTouch = !pastStory(lenis.animatedScroll, 0.25); nativeTouch = !lenis.options.syncTouch; held = false; }
+      // (from the very top of Behind the scenes it's the phone's own the moment you scroll down — and the site's if you
+      // scroll back up into the folders, where the zones hold)
+      if (HANDHELD && e.type === 'touchstart' && e.touches?.length === 1) {
+        lenis.options.syncTouch = !pastStory(lenis.animatedScroll, 0.25); nativeTouch = !lenis.options.syncTouch; held = false;
+        deciding = lenis.options.syncTouch && pastStory(lenis.animatedScroll);
+      }
+      if (deciding && e.type === 'touchmove' && data.deltaY) {
+        deciding = false;
+        if (data.deltaY > 0) { lenis.options.syncTouch = false; nativeTouch = true; }
+      }
       if (touch && !lenis.options.syncTouch) return true;
       // a second finger down makes it a pinch — and it stays one until every finger is off, so the page
       // neither scrolls under the pinch nor jumps when one finger lifts before the other
